@@ -1,0 +1,20 @@
+{
+  "name": "explainer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "One question in, one explainer video out. Research → pedagogy → Hedra-generated assets → Remotion render, with automated checks in place of user review.",
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev": "pnpm --filter @explainer/web dev",
+    "inngest": "pnpm --filter @explainer/web inngest",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "db:push": "pnpm --filter @explainer/web db:push",
+    "db:studio": "pnpm --filter @explainer/web db:studio",
+    "render:preview": "pnpm --filter @explainer/render preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

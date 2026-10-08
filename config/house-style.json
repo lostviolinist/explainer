@@ -1,0 +1,48 @@
+{
+  "$comment": "The one visual style for every video. Decided 2026-10-07 from generated test frames; see the planning doc, House style.",
+  "name": "flat-detailed",
+  "styleText": "Flat vector illustration, detailed. Limited palette: one background, one ink, four accent hues. Simple geometric forms, no outlines, no gradients except for light and glow, generous negative space. Every frame has a subject with an idea in it and at least two supporting details. No text, no labels; those are composited programmatically.",
+  "backgrounds": {
+    "dark": { "hex": "#0B1C3F", "use": "space, physics, anything luminous" },
+    "light": { "hex": "#F6F3EC", "use": "everything else" }
+  },
+  "palette": {
+    "ink": "#1B2235",
+    "accents": ["#F2C14E", "#8FB8E8", "#E4573D", "#5FA36B"]
+  },
+  "typography": {
+    "caption": { "family": "Inter", "weight": 600, "size": 44 },
+    "label": { "family": "Inter", "weight": 500, "size": 34 }
+  },
+  "captions": { "position": "bottom-right", "safeInset": 72 },
+  "referenceFrames": {
+    "$comment": "Hedra asset ids of the two reference images every generation call carries. Pick by background.",
+    "light": { "assetId": "asset_bdee077c-dcb3-4f3e-8389-bf5b05472248", "subject": "leaf cross-section, three pigment layers" },
+    "dark": { "assetId": "asset_e878c319-59c0-4bf0-affc-0fbf0fb9866c", "subject": "black hole bending starlight, detailed" }
+  },
+  "voice": {
+    "$comment": "House narrator. multilingual-v2 chosen over v3 because duration is predictable from word count (v3 varied 23-28s on the same line).",
+    "model": "elevenlabs-multilingual-v2",
+    "voiceId": "voice_b716c1fa-74a9-40e1-adbe-442583af907c",
+    "name": "David O.",
+    "speed": 1.1,
+    "deeperSpeed": 1.2,
+    "wordsPerMinute": 165,
+    "playfulModel": "elevenlabs-v3"
+  },
+  "models": {
+    "$comment": "Allowlist per visual type, in retry order. From the 2026-10-07 bake-off.",
+    "still": ["gpt-image-2", "recraft-v3"],
+    "icon": ["recraft-v3"],
+    "background": ["flux-kontext-pro", "gpt-image-2"],
+    "animatedStill": ["kling-25-turbo"],
+    "generatedClip": ["wan-3-0", "minimax-h3"],
+    "referenceSequence": ["minimax-h3", "wan-3-0"],
+    "heroClip": ["veo-31"],
+    "presenter": ["hedra-avatar"],
+    "music": ["elevenlabs-music"],
+    "sfx": ["elevenlabs-sound-effects"],
+    "upscale": ["topaz-video-upscaler"]
+  },
+  "clip": { "defaultDurationMs": 5000, "maxDurationMs": 8000, "resolution": "720p", "animatedStillResolution": "1080p" }
+}

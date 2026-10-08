@@ -1,0 +1,12 @@
+node_modules
+dist
+.next
+out
+.turbo
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
+/apps/web/drizzle/meta
+/packages/render/out
+.DS_Store

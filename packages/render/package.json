@@ -1,0 +1,37 @@
+{
+  "name": "@explainer/render",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./composition": "./src/Root.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "preview": "remotion studio src/Root.tsx",
+    "render:sample": "tsx scripts/render-sample.ts",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@explainer/schemas": "workspace:*",
+    "@remotion/bundler": "^4.0.230",
+    "@remotion/cli": "^4.0.230",
+    "@remotion/lambda": "^4.0.230",
+    "@remotion/renderer": "^4.0.230",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.230",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
