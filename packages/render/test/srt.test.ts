@@ -22,3 +22,9 @@ test("total frames includes tails and end card", () => {
   const f = totalFrames(sampleProps);
   assert.equal(f, Math.round((4.2 + 0.6) * FPS) + Math.round((7.1 + 0.6) * FPS) + 6 * FPS);
 });
+
+test("short clips bounce forward and back instead of freezing", async () => {
+  const { pingPong } = await import("../src/SceneLayers.tsx");
+  const n = 5; // frames 0..4
+  assert.deepEqual(Array.from({ length: 12 }, (_, f) => pingPong(f, n)), [0, 1, 2, 3, 4, 3, 2, 1, 0, 1, 2, 3]);
+});

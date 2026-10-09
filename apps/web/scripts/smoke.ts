@@ -270,6 +270,7 @@ async function main() {
   stills.forEach((f, i) => media.set(`/still-${i}.png`, { bytes: readFileSync(f), type: "image/png" }));
 
   let jobs = 0;
+  const clipJobs = new Map<number, Promise<void>>();
   let moderated = false;
   const hedra = {
     async run(model: string, input: Record<string, unknown>): Promise<JobResult> {
@@ -294,7 +295,9 @@ async function main() {
         out = { path: `/${id}.wav`, type: "audio/wav", w: null, h: null, ms: Math.round(s * 1000) };
       } else if (RULES[model]!.required.includes("duration_ms")) {
         const ms = input.duration_ms as number;
-        if (!media.has(`/clip-${ms}.mp4`)) media.set(`/clip-${ms}.mp4`, { bytes: await makeClip(dir, ms, stills.map((f) => readFileSync(f))), type: "video/mp4" });
+        // One encode per length, even when scenes ask for the same length at once.
+        if (!clipJobs.has(ms)) clipJobs.set(ms, makeClip(dir, ms, stills.map((f) => readFileSync(f))).then((bytes) => void media.set(`/clip-${ms}.mp4`, { bytes, type: "video/mp4" })));
+        await clipJobs.get(ms);
         out = { path: `/clip-${ms}.mp4`, type: "video/mp4", w: 640, h: 360, ms };
       } else {
         const j = input.output_format === "jpeg";
@@ -378,7 +381,9 @@ async function main() {
       const i = pngBytes.indexOf("IDAT");
       const [, r = 0, g = 0, b = 0] = inflateSync(pngBytes.subarray(i + 4, i + 4 + pngBytes.readUInt32BE(i - 4)));
       console.log(`  clip scene ${s.id}: frame at ${t.toFixed(1)}s (clip is ${clipS}s) = rgb(${r},${g},${b})`);
-      if (!stills.length && !(g > 120 && r < 120)) fail.push(`clip scene ${s.id}: expected the clip's last (green) frame held at ${t.toFixed(1)}s, got rgb(${r},${g},${b})`);
+      // Past the clip's end it keeps moving (forward and back), so any clip frame is right; the scene background is not.
+      const clipFrame = Math.max(r, g, b) > 120 && Math.min(r, g, b) < 100;
+      if (!stills.length && !clipFrame) fail.push(`clip scene ${s.id}: expected a clip frame at ${t.toFixed(1)}s (clip is ${clipS}s), got rgb(${r},${g},${b})`);
     }
     offset += a.audio.durationS + 0.6;
   }

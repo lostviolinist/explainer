@@ -190,7 +190,13 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
       const m = await mirrorOutcome(ctx, brief.projectId, out);
       await ctx.store.recordCost(brief.projectId, "video", out.costUsd, scene.id);
       // Score start / middle / end frames: both bake-off failures appeared after the first second.
-      const score = await scoreFrames(ctx, scene, await ctx.frames.sample(m.url, 3));
+      // A clip we can't decode counts as a failed attempt (next model, then a simpler visual).
+      const frames = await ctx.frames.sample(m.url, 3).catch((e: Error) => {
+        qa.push({ check: "style-consistency", passed: false, score: null, attempts: attempt, fallback: null, notes: `unreadable clip: ${e.message.slice(0, 200)}` });
+        return null;
+      });
+      if (!frames) continue;
+      const score = await scoreFrames(ctx, scene, frames);
       const ok = score.styleMatch >= PASS && score.matchesDirection >= PASS - 0.1 && !score.hasText;
       qa.push({ check: "style-consistency", passed: ok, score: score.styleMatch, attempts: attempt, fallback: null, notes: score.notes });
       if (ok) moving = m;

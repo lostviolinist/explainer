@@ -4,24 +4,45 @@ import type { ExplainerProps } from "./props.js";
 
 type Scene = ExplainerProps["scenes"][number];
 
-/** The generated visual: a still (gently pushed in), a clip, or nothing. */
+/**
+ * A slow camera move across the whole scene so no shot sits still: push in, with a
+ * gentle pan whose direction alternates by scene.
+ */
+function Drift({ scene, children }: { scene: Scene; children: React.ReactNode }) {
+  const frame = useCurrentFrame();
+  const total = Math.max(1, scene.durationS * FPS);
+  const t = interpolate(frame, [0, total], [0, 1], { extrapolateRight: "clamp" });
+  const ease = t * t * (3 - 2 * t);
+  const dir = Number(scene.id.replace(/\D/g, "") || 0) % 2 ? 1 : -1;
+  const transform = `scale(${1.04 + 0.08 * ease}) translate(${dir * (1.5 - 3 * ease)}%, ${0.8 - 1.6 * ease}%)`;
+  return <AbsoluteFill style={{ transform, willChange: "transform" }}>{children}</AbsoluteFill>;
+}
+
+/** Frame within a clip of `n` frames, played forward then backward, so a short clip never freezes. */
+export function pingPong(frame: number, n: number): number {
+  if (n <= 1) return 0;
+  const cycle = 2 * (n - 1);
+  const t = frame % cycle;
+  return t < n ? t : cycle - t;
+}
+
+/** The generated visual: a clip (looped forward and back) or a still, under a slow camera move. */
 export function Visual({ scene }: { scene: Scene }) {
   const frame = useCurrentFrame();
   const clip = scene.visuals.find((v) => v.role === "clip");
   const still = scene.visuals.find((v) => v.role === "still" || v.role === "background");
 
   if (clip) {
-    // Clips are 5–8 s; hold the last frame if the narration runs longer.
+    // Clips are 5–8 s and narration runs 20–40 s: after the first pass, bounce instead of freezing.
     const video = <OffthreadVideo src={clip.asset.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />;
-    const lastFrame = clip.asset.durationMs ? Math.floor((clip.asset.durationMs / 1000) * FPS) - 2 : null;
-    return <AbsoluteFill>{lastFrame !== null && frame > lastFrame ? <Freeze frame={lastFrame}>{video}</Freeze> : video}</AbsoluteFill>;
+    const n = clip.asset.durationMs ? Math.floor((clip.asset.durationMs / 1000) * FPS) - 1 : null;
+    return <Drift scene={scene}>{n !== null && frame >= n ? <Freeze frame={pingPong(frame, n)}>{video}</Freeze> : video}</Drift>;
   }
   if (still) {
-    const scale = interpolate(frame, [0, 30 * FPS], [1, 1.06], { extrapolateRight: "clamp" });
     return (
-      <AbsoluteFill>
-        <Img src={still.asset.url} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }} />
-      </AbsoluteFill>
+      <Drift scene={scene}>
+        <Img src={still.asset.url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      </Drift>
     );
   }
   return null;
