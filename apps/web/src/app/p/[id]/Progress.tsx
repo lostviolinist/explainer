@@ -111,14 +111,15 @@ export function Progress({ projectId, question, initial, initialLive }: { projec
   // Merge live previews from events into the stored state, so each piece shows the moment it exists.
   const view = useMemo(() => {
     const sources = new Map(live.sources.map((s) => [s.url, s]));
-    const facts = [...live.facts];
+    // Research's merged claims replace the per-page facts once they exist (pages repeat each other).
+    const pageFacts: LiveState["facts"] = [];
     const media = new Map<string, Preview>();
     let hookLine: string | undefined;
     for (const e of events) {
       const p = e.preview;
       if (!p) continue;
       if (p.source && !sources.has(p.source.url)) sources.set(p.source.url, p.source);
-      if (p.fact && !facts.some((f) => f.text === p.fact)) facts.push({ text: p.fact, domain: p.source?.domain });
+      if (p.fact) pageFacts.push({ text: p.fact, domain: p.source?.domain });
       if (p.hookLine) hookLine = p.hookLine;
       if (p.sceneId) media.set(p.sceneId, { ...media.get(p.sceneId), ...p });
     }
@@ -126,6 +127,7 @@ export function Progress({ projectId, question, initial, initialLive }: { projec
       const m = media.get(s.id) ?? {};
       return { ...s, stillUrl: s.stillUrl ?? m.stillUrl, clipUrl: s.clipUrl ?? m.clipUrl, audioUrl: s.audioUrl ?? m.audioUrl };
     });
+    const facts = distinctFacts(live.facts.length ? live.facts : pageFacts);
     return { sources: [...sources.values()], facts, scenes, hookLine: hookLine ?? scenes[0]?.narration.split(/(?<=[.?!])\s/)[0] };
   }, [events, live]);
 
@@ -215,6 +217,21 @@ export function Progress({ projectId, question, initial, initialLive }: { projec
 function sentence(s: string) {
   const t = s.charAt(0).toUpperCase() + s.slice(1);
   return /[.!?…]$/.test(t) || !/^\w+ing\b/.test(t) ? t : `${t}…`;
+}
+
+/** Drop facts that say the same thing in other words: most of their key words overlap. */
+function distinctFacts(facts: LiveState["facts"]): LiveState["facts"] {
+  const keyWords = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 3));
+  const kept: { fact: LiveState["facts"][number]; words: Set<string> }[] = [];
+  for (const fact of facts) {
+    const words = keyWords(fact.text);
+    const same = kept.some((k) => {
+      const shared = [...words].filter((w) => k.words.has(w)).length;
+      return shared / Math.max(1, Math.min(words.size, k.words.size)) >= 0.6;
+    });
+    if (!same) kept.push({ fact, words });
+  }
+  return kept.map((k) => k.fact);
 }
 
 function notifyDone(question: string) {
