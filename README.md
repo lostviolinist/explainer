@@ -15,6 +15,17 @@ packages/render      Remotion composition (captions from word timestamps, progra
 config/house-style.json  the style, reference frame asset ids, voice, model allowlists. Decisions, as data.
 ```
 
+## Running with Docker
+
+Requires Docker Desktop (or Docker Engine with Compose). Starts Postgres, an S3-compatible store (SeaweedFS), the Inngest dev server, and the app; tables and the bucket are created on startup.
+
+```bash
+cp .env.example .env            # fill in HEDRA_API_KEY, ANTHROPIC_API_KEY, TAVILY_API_KEY
+docker compose up --build
+```
+
+App: http://localhost:3000 · Inngest runs (step-by-step logs and errors): http://localhost:8288. Database and storage settings in `.env` are ignored here; the compose file points them at its own services. `docker compose down -v` wipes the data.
+
 ## Running locally
 
 Requirements: Node 22, pnpm 10, Postgres, an S3-compatible bucket (MinIO is fine), and keys for Hedra, Anthropic, and a search provider.
