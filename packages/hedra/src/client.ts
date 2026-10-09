@@ -126,7 +126,7 @@ export class HedraClient {
       body: JSON.stringify({
         input,
         idempotency_key: idempotencyKey,
-        webhook: this.webhookUrl ?? null,
+        ...(this.webhookUrl ? { webhook: this.webhookUrl } : {}),
       }),
     });
   }
@@ -141,6 +141,11 @@ export class HedraClient {
 
   async model(model: string): Promise<unknown> {
     return this.request(`/models/${encodeURIComponent(model)}`);
+  }
+
+  /** Spendable balance on the account this key bills. */
+  async balance(): Promise<{ balance?: number; currency?: string }> {
+    return this.request(`/balance`);
   }
 
   /** Upload a file for use as a `{source:"url"}` input. Prefer asset ids when you have them. */

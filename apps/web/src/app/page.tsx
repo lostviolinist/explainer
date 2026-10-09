@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
-import { ask } from "./actions";
+import { AskForm } from "./AskForm";
 import { db, schema } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -16,10 +16,7 @@ export default async function Home() {
     <main>
       <h1>What do you want to understand?</h1>
       <p className="sub">Type a topic or a question. You get a short animated explainer with sources, in about ten minutes.</p>
-      <form action={ask} className="ask">
-        <input name="question" placeholder="why do leaves change colour in autumn?" autoFocus required minLength={3} maxLength={500} />
-        <button type="submit">Explain it</button>
-      </form>
+      <AskForm />
       {recent.length > 0 && (
         <div className="recent">
           Recently explained

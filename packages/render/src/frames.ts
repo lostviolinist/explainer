@@ -8,7 +8,8 @@ import { join } from "node:path";
 
 type Ff = (bin: "ffmpeg" | "ffprobe", args: string[]) => Promise<string>;
 
-const remotionFf: Ff = async (bin, args) => {
+/** Run Remotion's bundled ffmpeg/ffprobe; resolves to stdout. */
+export const remotionFf: Ff = async (bin, args) => {
   const { RenderInternals } = await import("@remotion/renderer");
   const r = await RenderInternals.callFf({ bin, args, indent: false, logLevel: "error", binariesDirectory: null, cancelSignal: undefined });
   return r.stdout;

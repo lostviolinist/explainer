@@ -59,14 +59,31 @@ export interface StillArgs {
   resolution?: string;
 }
 
-/** A still frame in the house style. gpt-image-2 by default. */
+/**
+ * A still frame in the house style. gpt-image-2 by default.
+ * Inputs follow each model's schema (GET /v3/models/{model}); Hedra rejects
+ * unknown fields, so per-model differences live here.
+ */
 export function generateStill(client: HedraClient, scope: string, models: string[], a: StillArgs) {
   return withFallback(client, scope, models, (model) => {
     const base: Record<string, unknown> = {
       prompt: a.prompt,
       aspect_ratio: a.aspectRatio ?? "16:9",
     };
-    if (a.resolution) base.resolution = a.resolution;
+    if (model.startsWith("recraft")) {
+      // Text-only: no reference images; prompt capped at 1000 chars.
+      base.prompt = a.prompt.slice(0, 1000);
+      base.resolution = a.resolution ?? "1080p";
+      return base;
+    }
+    if (model.startsWith("gpt-image")) {
+      // resolution is required (1K | 2K | 4K); 2K covers a 1080p frame. JPEG keeps
+      // the still under kling's 10.4 MB start-frame limit.
+      base.resolution = a.resolution ?? "2K";
+      base.output_format = "jpeg";
+    } else {
+      base.resolution = a.resolution ?? "1080p";
+    }
     if (a.references.length) base.images = a.references.map(asset);
     return base;
   });

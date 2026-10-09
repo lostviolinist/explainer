@@ -1,4 +1,4 @@
-import { AbsoluteFill, Img, OffthreadVideo, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Freeze, Img, OffthreadVideo, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { FPS, PALETTE, cueFrame } from "./props.js";
 import type { ExplainerProps } from "./props.js";
 
@@ -12,11 +12,9 @@ export function Visual({ scene }: { scene: Scene }) {
 
   if (clip) {
     // Clips are 5–8 s; hold the last frame if the narration runs longer.
-    return (
-      <AbsoluteFill>
-        <OffthreadVideo src={clip.asset.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-      </AbsoluteFill>
-    );
+    const video = <OffthreadVideo src={clip.asset.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />;
+    const lastFrame = clip.asset.durationMs ? Math.floor((clip.asset.durationMs / 1000) * FPS) - 2 : null;
+    return <AbsoluteFill>{lastFrame !== null && frame > lastFrame ? <Freeze frame={lastFrame}>{video}</Freeze> : video}</AbsoluteFill>;
   }
   if (still) {
     const scale = interpolate(frame, [0, 30 * FPS], [1, 1.06], { extrapolateRight: "clamp" });

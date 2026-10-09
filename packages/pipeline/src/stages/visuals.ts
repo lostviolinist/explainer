@@ -11,7 +11,7 @@
  */
 import { z } from "zod";
 import { AnimSpec, RenderSpec, SceneAssets, QaResult, type Scene, type ScenePlan, type Brief, type MirroredAsset } from "@explainer/schemas";
-import { generateStill, animateStill, generateClip, generateSpeech, type GenOutcome } from "@explainer/hedra";
+import { generateStill, animateStill, generateClip, generateSpeech, HedraError, type GenOutcome } from "@explainer/hedra";
 import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
 import { rescale } from "../providers/alignment.js";
@@ -69,6 +69,22 @@ async function mirrorOutcome(ctx: Ctx, projectId: string, out: GenOutcome): Prom
   return { ...m, model: out.model, costUsd: out.costUsd };
 }
 
+/**
+ * Run one generation attempt. A non-retryable failure (moderation, invalid
+ * input, every model in the allowlist refused) counts as a failed attempt so
+ * the retry/demotion ladder handles it; rate limits and outages are rethrown
+ * so the orchestrator retries the step.
+ */
+async function attemptGeneration(qa: QaResult[], check: QaResult["check"], attempt: number, gen: () => Promise<GenOutcome>): Promise<GenOutcome | null> {
+  try {
+    return await gen();
+  } catch (e) {
+    if (!(e instanceof HedraError) || e.retryable) throw e;
+    qa.push({ check, passed: false, score: null, attempts: attempt, fallback: null, notes: `generation failed: ${e.code}: ${e.message}` });
+    return null;
+  }
+}
+
 async function scoreFrames(ctx: Ctx, scene: Scene, imageUrls: string[]) {
   return ctx.llm.vision({
     system: `Score frames from an explainer video scene. matchesDirection: does the picture show what the direction describes (metaphor and details)? styleMatch: flat vector illustration, limited palette, no outlines, no gradients except glow, bottom-right clear? hasText: any legible text or labels baked into the image? Scores 0–1.`,
@@ -89,7 +105,8 @@ export async function narrate(ctx: Ctx, brief: Brief, scene: Scene): Promise<Sce
   });
   const asset = await mirrorOutcome(ctx, brief.projectId, out);
   await ctx.store.recordCost(brief.projectId, "narration", out.costUsd, scene.id);
-  const durationS = (asset.durationMs ?? 0) / 1000;
+  // Hedra reports duration for audio; estimate from word count if it ever doesn't.
+  const durationS = asset.durationMs ? asset.durationMs / 1000 : (scene.narration.split(/\s+/).length / v.wordsPerMinute) * 60;
   const aligned = await ctx.aligner.align(asset.url, scene.narration);
   const words = aligned.exact ? aligned.words : rescale(aligned.words, durationS);
   return { asset, durationS, words };
@@ -118,10 +135,13 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
     const stillModels = ctx.style.models.still ?? ["gpt-image-2"];
     for (let attempt = 1; attempt <= 2 && !still; attempt++) {
       await progress(`drawing scene ${scene.id.slice(1)}`, 0.3, undefined);
-      const out = await generateStill(ctx.hedra, scope(`still:${demotions}:${attempt}`), attempt === 1 ? stillModels : stillModels.slice(1).length ? stillModels.slice(1) : stillModels, {
-        prompt: attempt === 1 ? prompt : `${prompt} Match the reference image's style exactly.`,
-        references: refs,
-      });
+      const out = await attemptGeneration(qa, "visual-matches-direction", attempt, () =>
+        generateStill(ctx.hedra, scope(`still:${demotions}:${attempt}`), attempt === 1 ? stillModels : stillModels.slice(1).length ? stillModels.slice(1) : stillModels, {
+          prompt: attempt === 1 ? prompt : `${prompt} Match the reference image's style exactly.`,
+          references: refs,
+        }),
+      );
+      if (!out) continue;
       const m = await mirrorOutcome(ctx, brief.projectId, out);
       await ctx.store.recordCost(brief.projectId, "still", out.costUsd, scene.id);
       const score = await scoreFrames(ctx, scene, [m.url]);
@@ -152,18 +172,20 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
     for (let attempt = 1; attempt <= 2 && !moving; attempt++) {
       await progress(`animating scene ${scene.id.slice(1)}`, 0.6);
       const tryModels = attempt === 1 ? models : models.slice(1).length ? models.slice(1) : models;
-      const out =
+      const out = await attemptGeneration(qa, "style-consistency", attempt, () =>
         scene.visualType === "still-animated"
-          ? await animateStill(ctx.hedra, scope(`anim:${demotions}:${attempt}`), tryModels, {
+          ? animateStill(ctx.hedra, scope(`anim:${demotions}:${attempt}`), tryModels, {
               prompt: `Keep every shape exactly as in the frame. Subtle motion only: ${scene.visualDirection}. Static camera, no new objects.`,
-              startAssetId: still.hedraAssetId,
+              startAssetId: still!.hedraAssetId,
               durationMs: 5000,
             })
-          : await generateClip(ctx.hedra, scope(`clip:${demotions}:${attempt}`), tryModels, {
+          : generateClip(ctx.hedra, scope(`clip:${demotions}:${attempt}`), tryModels, {
               prompt,
-              references: [...refs, still.hedraAssetId],
+              references: [...refs, still!.hedraAssetId],
               durationMs,
-            });
+            }),
+      );
+      if (!out) continue;
       const m = await mirrorOutcome(ctx, brief.projectId, out);
       await ctx.store.recordCost(brief.projectId, "video", out.costUsd, scene.id);
       // Score start / middle / end frames: both bake-off failures appeared after the first second.

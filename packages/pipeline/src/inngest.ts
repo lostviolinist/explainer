@@ -39,7 +39,7 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
       onFailure: async ({ event, error, step }) => {
         const { projectId } = event.data.event.data;
         await step.sendEvent("notify-failure", { name: "project/stage.failed", data: { projectId, stage: "unknown", error: error.message } });
-        await getCtx().store.progress({ projectId, stage: "failed", message: "something went wrong; we're looking into it", fraction: 1, at: new Date().toISOString() });
+        await getCtx().store.progress({ projectId, stage: "failed", message: `something went wrong: ${error.message.slice(0, 300)}`, fraction: 1, at: new Date().toISOString() });
       },
     },
     { event: "project/created" },

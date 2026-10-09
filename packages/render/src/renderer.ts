@@ -6,10 +6,11 @@
  *
  * Both write MP4 + SRT through the provided `upload` callback and return URLs.
  */
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
 import type { ExplainerProps } from "./props.js";
 import { COMPOSITION_ID, FPS, SCENE_TAIL_S, totalFrames } from "./props.js";
 
@@ -47,6 +48,26 @@ export function buildSrt(props: ExplainerProps): string {
   return cues.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`).join("\n");
 }
 
+/** Make sure local rendering has a browser: REMOTION_BROWSER_EXECUTABLE, or Remotion's headless shell (downloaded if missing). */
+export async function ensureRenderBrowser(): Promise<string> {
+  const exe = process.env.REMOTION_BROWSER_EXECUTABLE;
+  if (exe) {
+    await access(exe);
+    return exe;
+  }
+  // In a child process: a failed download surfaces as an uncaught error inside Remotion
+  // that would crash this server. Same cwd, so it lands in the cache renders read from.
+  // Path from this file, not require.resolve: bundlers rewrite that into a module id.
+  const renderer = resolve(dirname(fileURLToPath(import.meta.url)), "../node_modules/@remotion/renderer");
+  const script = `require(${JSON.stringify(renderer)}).ensureBrowser({ logLevel: "error" }).then((s) => { console.log(s.path ?? s.type); process.exit(0); })`;
+  return new Promise((ok, fail) =>
+    execFile(process.execPath, ["-e", script], { cwd: process.cwd(), timeout: 10 * 60_000 }, (err, stdout, stderr) => {
+      if (err) fail(new Error(`could not download Remotion's headless Chrome: ${(stderr.match(/Error: .*/)?.[0] ?? err.message).slice(0, 200)}`));
+      else ok(stdout.trim());
+    }),
+  );
+}
+
 export class LocalRenderer {
   private serveUrl: Promise<string> | null = null;
   constructor(private upload: Upload) {}
@@ -55,8 +76,9 @@ export class LocalRenderer {
     if (!this.serveUrl) {
       this.serveUrl = (async () => {
         const { bundle } = await import("@remotion/bundler");
+        const { webpackOverride } = await import("./webpack-override.js");
         const here = dirname(fileURLToPath(import.meta.url));
-        return bundle({ entryPoint: resolve(here, "Root.tsx"), webpackOverride: (c) => c });
+        return bundle({ entryPoint: resolve(here, "Root.tsx"), webpackOverride });
       })();
     }
     return this.serveUrl;
@@ -65,7 +87,9 @@ export class LocalRenderer {
   async render(props: ExplainerProps): Promise<RenderOut> {
     const { renderMedia, selectComposition } = await import("@remotion/renderer");
     const serveUrl = await this.bundle();
-    const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps: props });
+    // Optional: a preinstalled Chrome/Chromium instead of Remotion's downloaded headless shell.
+    const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || null;
+    const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps: props, browserExecutable });
     const dir = await mkdtemp(join(tmpdir(), "explainer-"));
     const out = join(dir, `${props.projectId}.mp4`);
     await renderMedia({
@@ -77,6 +101,7 @@ export class LocalRenderer {
       crf: 18,
       audioBitrate: "192k",
       concurrency: null,
+      browserExecutable,
     });
     const srt = buildSrt(props);
     const srtPath = join(dir, `${props.projectId}.srt`);

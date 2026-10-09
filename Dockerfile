@@ -21,6 +21,11 @@ RUN pnpm install --frozen-lockfile
 # The renderer bundles packages/render/src at runtime, so the whole source stays in the image.
 COPY . .
 RUN pnpm --filter @explainer/web build
+# Remotion's headless Chrome, fetched now rather than on the first render. It is cached
+# under the nearest package.json to the working directory, so install it from apps/web.
+# If the download fails here, the app fetches it on its startup check instead.
+RUN cd apps/web && node -e "require('/app/packages/render/node_modules/@remotion/renderer').ensureBrowser()" \
+    || echo "Remotion browser not downloaded at build time; the app will fetch it on first check."
 
 ENV NODE_ENV=production
 EXPOSE 3000

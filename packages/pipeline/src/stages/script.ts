@@ -34,7 +34,7 @@ const Scenes = z.object({
       targetS: z.number(),
       onScreenTerms: z.array(z.string()),
     }),
-  ),
+  ).min(3, "write at least 3 scenes"),
 });
 
 const LearnerPass = z.object({
@@ -96,7 +96,16 @@ Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.`,
       maxTokens: 6000,
     });
 
-    const planScenes: Scene[] = scenes.map((s, i) => Scene.parse({ ...s, id: `s${i + 1}`, render: null }));
+    const planScenes: Scene[] = scenes.map((s, i) =>
+      Scene.parse({
+        ...s,
+        id: `s${i + 1}`,
+        // Presenter scenes aren't built in v1; Scene allows 5–45 s.
+        visualType: s.visualType === "presenter" ? "still-animated" : s.visualType,
+        targetS: Math.min(45, Math.max(5, s.targetS)),
+        render: null,
+      }),
+    );
     const narration = planScenes.map((s) => s.narration).join("\n\n");
 
     await progress("checking a learner could follow it", 0.6 + 0.1 * (attempt - 1));

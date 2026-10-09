@@ -29,7 +29,7 @@ const Extracted = z.object({
 const Merged = z.object({
   claims: z.array(
     z.object({
-      id: z.string(),
+      id: Claim.shape.id,
       text: z.string(),
       type: Claim.shape.type,
       fit: Claim.shape.fit,
@@ -64,22 +64,33 @@ export async function research(ctx: Ctx, brief: Brief): Promise<{ research: Rese
     (p): p is NonNullable<typeof p> => p !== null && p.text.length > 500,
   );
 
-  // Extract claims per page, with a verbatim quote each.
+  if (pages.length === 0) throw new Error(`no sources could be opened for "${brief.topic}" (${ranked.length} search results)`);
+
+  // Extract claims per page, with a verbatim quote each. A few pages at a time;
+  // a page the model can't extract from is skipped rather than failing research.
   type Evidence = { url: string; quote: string; reputation: number; pageIdx: number };
   const evidence: Evidence[] = [];
   const perPage: { url: string; claims: z.infer<typeof Extracted>["claims"] }[] = [];
   let done = 0;
-  for (const p of pages) {
-    const ex = await ctx.llm.json({
-      system: `Extract the claims from this page that matter for the learning goal. Each claim must be supported by a verbatim quote from the page (≤ 240 chars). Mark fit: "needed" if the goal can't be met without it, "nice" if it helps, "advanced" if it goes beyond the stated level. Numbers only if they appear on the page.`,
-      user: `Learning goal: ${brief.learningGoal}\nLevel: ${brief.level}\n\nPAGE (${p.url}):\n${p.text.slice(0, 24_000)}`,
-      schema: Extracted,
-      maxTokens: 3000,
-    });
-    perPage.push({ url: p.url, claims: ex.claims });
+  const extract = async (p: (typeof pages)[number]) => {
+    try {
+      const ex = await ctx.llm.json({
+        system: `Extract the claims from this page that matter for the learning goal. Each claim must be supported by a verbatim quote from the page (≤ 240 chars). Mark fit: "needed" if the goal can't be met without it, "nice" if it helps, "advanced" if it goes beyond the stated level. Numbers only if they appear on the page.`,
+        user: `Learning goal: ${brief.learningGoal}\nLevel: ${brief.level}\n\nPAGE (${p.url}):\n${p.text.slice(0, 24_000)}`,
+        schema: Extracted,
+        maxTokens: 3000,
+      });
+      perPage.push({ url: p.url, claims: ex.claims });
+    } catch (e) {
+      // Only a bad answer about this page is skippable; API errors (quota, auth, outage) fail the step.
+      if (!(e instanceof z.ZodError || e instanceof SyntaxError || /^LLM response incomplete/.test((e as Error).message))) throw e;
+      console.warn(`[research] skipped ${p.url}: ${(e as Error).message.slice(0, 200)}`);
+    }
     done++;
     await progress(`reading ${done} of ${pages.length} sources`, 0.2 + 0.4 * (done / pages.length));
-  }
+  };
+  for (let i = 0; i < pages.length; i += 4) await Promise.all(pages.slice(i, i + 4).map(extract));
+  if (perPage.every((pp) => pp.claims.length === 0)) throw new Error(`no claims could be extracted from ${pages.length} sources`);
   perPage.forEach((pp, pageIdx) =>
     pp.claims.forEach((c) => evidence.push({ url: pp.url, quote: c.quote, reputation: domainReputation(pp.url), pageIdx })),
   );
