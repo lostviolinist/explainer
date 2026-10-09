@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AnimSpec, VisualType, WordTimestamp } from "@explainer/schemas";
+import { AnimSpec, VisualType, WordTimestamp, VIDEO_TIMING } from "@explainer/schemas";
 
 /** Props for the Explainer composition. Mirrors RenderProps in @explainer/pipeline. */
 export const ExplainerProps = z.object({
@@ -33,8 +33,8 @@ export const FPS = 30;
 export const WIDTH = 1920;
 export const HEIGHT = 1080;
 /** Breathing room after the narration ends, before the cut. */
-export const SCENE_TAIL_S = 0.6;
-export const END_CARD_S = 6;
+export const SCENE_TAIL_S = VIDEO_TIMING.sceneTailS;
+export const END_CARD_S = VIDEO_TIMING.endCardS;
 
 export const PALETTE = {
   dark: { bg: "#0B1C3F", ink: "#F6F3EC", muted: "rgba(246,243,236,0.65)" },

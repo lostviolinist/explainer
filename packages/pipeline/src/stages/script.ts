@@ -5,11 +5,16 @@
  *   → learner pass (can a novice follow it and meet the goal?)
  *   → expert pass (is every sentence sourced and not overstated?)
  *   Two consecutive failures → simpler arc (fewer claims, longer explanations).
+ *
+ * Length cap: the finished video must fit maxVideoSeconds() (3 min by default).
+ * The script's word count predicts it before any media is generated; a draft
+ * that runs over is sent back with the numbers, and the last resort trims
+ * sentences from the middle scenes.
  */
 import { z } from "zod";
-import { ScenePlan, Scene, Beat, VisualType, type Brief, type ResearchBrief } from "@explainer/schemas";
+import { ScenePlan, Scene, Beat, VisualType, VIDEO_TIMING, lengthFromClaims, type Brief, type ResearchBrief } from "@explainer/schemas";
 import type { Ctx } from "../context.js";
-import { makeProgress } from "../context.js";
+import { makeProgress, maxVideoSeconds } from "../context.js";
 
 export const Arc = z.object({
   beats: z.array(
@@ -48,6 +53,39 @@ export const ExpertPass = z.object({
   overstated: z.array(z.string()),
 });
 
+/** Aim a little under the cap: real narration runs a few percent off the words-per-minute estimate. */
+const LENGTH_MARGIN = 0.95;
+
+const countWords = (s: string) => s.split(/\s+/).filter(Boolean).length;
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
+/** Predicted length of the rendered video: narration at the house pace, plus scene pauses and the end card. */
+export function estimateVideoS(scenes: Pick<Scene, "narration">[], wordsPerMinute: number): number {
+  return scenes.reduce((t, s) => t + (countWords(s.narration) / wordsPerMinute) * 60 + VIDEO_TIMING.sceneTailS, 0) + VIDEO_TIMING.endCardS;
+}
+
+/**
+ * Last resort when rewrites still run long: drop closing sentences from the longest
+ * middle scenes (never the hook or recap), then whole middle scenes, until it fits.
+ */
+export function trimToFit(scenes: Scene[], limitS: number, wordsPerMinute: number): Scene[] {
+  let out = scenes.map((s) => ({ ...s }));
+  const sentences = (t: string) => t.match(/[^.!?]+[.!?]+["')\]]*/g)?.map((x) => x.trim()) ?? [t];
+  const longestMiddle = (pred: (s: Scene) => boolean) =>
+    out.slice(1, -1).filter(pred).sort((a, b) => countWords(b.narration) - countWords(a.narration))[0];
+  while (estimateVideoS(out, wordsPerMinute) > limitS) {
+    const s = longestMiddle((x) => sentences(x.narration).length > 1);
+    if (s) {
+      s.narration = sentences(s.narration).slice(0, -1).join(" ");
+      continue;
+    }
+    const victim = out.length > 3 ? longestMiddle(() => true) : undefined;
+    if (!victim) break;
+    out = out.filter((x) => x !== victim);
+  }
+  return out.map((s, i) => ({ ...s, id: `s${i + 1}` }));
+}
+
 const LEVEL_WORDS: Record<Brief["level"], string> = {
   nothing: "someone with no background at all; every term is introduced before it is used",
   basics: "someone who knows the everyday basics; technical terms are fine once defined",
@@ -56,9 +94,15 @@ const LEVEL_WORDS: Record<Brief["level"], string> = {
 
 export async function script(ctx: Ctx, brief: Brief, research: ResearchBrief): Promise<ScenePlan> {
   const progress = makeProgress(ctx, brief.projectId, "script");
-  const lengthS = brief.lengthS ?? 180;
-  const wordBudget = brief.wordBudget ?? 495;
+  const maxS = maxVideoSeconds();
+  const lengthS = Math.min(brief.lengthS ?? 180, maxS);
   const [minScenes, maxScenes] = brief.sceneRange ?? [4, 9];
+  const wpm = ctx.style.voice.wordsPerMinute;
+  // Narration that fits the cap once scene pauses and the end card are added.
+  const limitS = maxS * LENGTH_MARGIN;
+  const wordLimit = Math.floor(((limitS - VIDEO_TIMING.endCardS - maxScenes * VIDEO_TIMING.sceneTailS) / 60) * wpm);
+  const wordBudget = Math.min(brief.wordBudget ?? wordLimit, wordLimit);
+  const condensed = lengthFromClaims(research.neededClaimCount) > lengthS;
 
   const usable = research.claims.filter((c) => c.confidence !== "contested" || c.type === "history");
   const claimList = usable.map((c) => `${c.id} (${c.type}, ${c.fit}, ${c.confidence}): ${c.text}`).join("\n");
@@ -66,17 +110,22 @@ export async function script(ctx: Ctx, brief: Brief, research: ResearchBrief): P
   const analogies = research.analogies.map((a) => `- ${a.text} (explains ${a.explains.join(", ")}; breaks down: ${a.breaksDown})`).join("\n");
 
   let simplify = 0;
+  let lengthNote = "";
   let lastPlan: ScenePlan | null = null;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
-    await progress(attempt === 1 ? "planning the story" : "rewriting the parts a learner couldn't follow", 0.1 + 0.2 * (attempt - 1));
+    await progress(
+      attempt === 1 ? "planning the story" : lengthNote ? `shortening the script to fit ${clock(maxS)}` : "rewriting the parts a learner couldn't follow",
+      0.1 + 0.2 * (attempt - 1),
+    );
 
     const arc = await ctx.llm.json({
       system: `Plan a ${Math.round(lengthS / 60)}-minute explainer as exactly seven beats in this order: hook, ground, misconception, build-up, core, payoff, recap.
 Audience: ${LEVEL_WORDS[brief.level]}. Tone: ${brief.tone}.${brief.ageMode ? ` Age mode: ${brief.ageMode}.` : ""}
 Assign claim ids to beats; use every "needed" claim, "nice" claims as time allows, and no "advanced" claims${brief.level === "deep" ? " unless they serve the goal" : ""}.
+${condensed ? `The research holds more than fits in ${clock(lengthS)}. Keep only what the learner needs to meet the goal: every "needed" claim that serves it, explained simply; skip "nice" and "advanced" detail rather than rushing through it.` : ""}
 ${simplify ? `SIMPLIFY (round ${simplify}): use fewer claims and give each more time; drop "nice" claims first.` : ""}
-Beat durations sum to ${lengthS} s.`,
+Beat durations sum to ${lengthS} s; the whole video must not exceed ${clock(maxS)}.`,
       user: `Learning goal: ${brief.learningGoal}\n\nClaims:\n${claimList}\n\nMisconceptions:\n${misconceptions}\n\nAnalogies:\n${analogies}`,
       schema: Arc,
       maxTokens: 2500,
@@ -90,13 +139,13 @@ Each scene has three tracks:
 - visualType: diagram (systems, labelled parts), chart (numbers from a claim), text (key terms, recap), still-animated (metaphors, "imagine a…", historical scenes), clip (establishing shots, nature, demonstrations), reference-seq (a recurring character), presenter (never in v1).
 Rules: one idea per scene; name a thing before showing its label; a misconception is stated, then corrected; the recap uses the exact words of the learning goal.
 onScreenTerms: words that will appear as labels; must appear in the narration.
-Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.`,
+Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.${lengthNote ? `\nLENGTH: ${lengthNote}` : ""}`,
       user: `Arc:\n${JSON.stringify(arc.beats, null, 1)}\n\nClaims:\n${claimList}\n\nAnalogies:\n${analogies}`,
       schema: Scenes,
       maxTokens: 6000,
     });
 
-    const planScenes: Scene[] = scenes.map((s, i) =>
+    let planScenes: Scene[] = scenes.map((s, i) =>
       Scene.parse({
         ...s,
         id: `s${i + 1}`,
@@ -106,6 +155,18 @@ Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.`,
         render: null,
       }),
     );
+
+    // Length check, before any media is paid for. Over the cap → rewrite shorter (no review of the long draft).
+    const estS = estimateVideoS(planScenes, wpm);
+    if (estS > limitS) {
+      const words = planScenes.reduce((n, s) => n + countWords(s.narration), 0);
+      if (attempt < 3) {
+        lengthNote = `Your previous draft had ${words} words of narration (about ${clock(estS)} of video). The hard limit is ${wordLimit} words, so the video stays under ${clock(maxS)}. Cut to what the learner needs to meet the goal: merge or drop scenes, drop nice-to-have detail, keep sentences short. Simpler beats faster.`;
+        simplify++;
+        continue;
+      }
+      planScenes = trimToFit(planScenes, limitS, wpm);
+    }
     const narration = planScenes.map((s) => s.narration).join("\n\n");
 
     await progress("checking a learner could follow it", 0.6 + 0.1 * (attempt - 1));

@@ -317,6 +317,9 @@ export type ProgressEvent = z.infer<typeof ProgressEvent>;
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Fixed timing in the rendered video: a pause after each scene and the sources end card. */
+export const VIDEO_TIMING = { sceneTailS: 0.6, endCardS: 6 } as const;
+
 /** Scene budget from the brief: ~165 wpm at 1.1×, 20–40 s per scene. */
 export function sceneBudget(lengthS: number, wpm = 165) {
   const wordBudget = Math.round((lengthS / 60) * wpm);

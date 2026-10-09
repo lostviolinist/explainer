@@ -51,6 +51,15 @@ export function makeProgress(ctx: Ctx, projectId: string, stage: Stage) {
     ctx.store.progress({ projectId, stage, message, fraction, preview, at: ctx.now() });
 }
 
+/**
+ * Longest video we make, in seconds: MAX_VIDEO_SECONDS, default 3 minutes. Research
+ * that would need longer is condensed to fit, which also bounds Hedra spend per video.
+ */
+export function maxVideoSeconds(): number {
+  const v = Number(process.env.MAX_VIDEO_SECONDS);
+  return Number.isFinite(v) && v >= 60 ? Math.min(480, Math.floor(v)) : 180;
+}
+
 export function ctxFromEnv(store: ArtifactStore, frames: FrameSampler): Ctx {
   const env = process.env;
   const need = (k: string) => {

@@ -4,7 +4,8 @@ import type { z } from "zod";
 import { MemoryStore } from "../src/providers/store.ts";
 import { loadHouseStyle, type Ctx } from "../src/context.ts";
 import { intake } from "../src/stages/intake.ts";
-import { script } from "../src/stages/script.ts";
+import { script, estimateVideoS, trimToFit } from "../src/stages/script.ts";
+import { research as runResearch } from "../src/stages/research.ts";
 import { pacingCheck } from "../src/stages/assemble.ts";
 import { renderSceneAssets } from "../src/stages/visuals.ts";
 import { evenSplit, rescale } from "../src/providers/alignment.ts";
@@ -175,4 +176,75 @@ test("clip QA scores frames sampled from the clip, not the video file", async ()
   assert.deepEqual(visionCalls[0], [out.visuals[0]!.asset.url]); // the still itself
   assert.equal(visionCalls[1]!.length, 3);
   assert.ok(visionCalls[1]!.every((u) => u.startsWith("data:image/jpeg")), "clip QA must see images, never the video URL");
+});
+
+// ---------------------------------------------------------------------------
+// 3-minute cap
+
+const BEATS7 = ["hook", "ground", "misconception", "build-up", "core", "payoff", "recap"] as const;
+const briefFor = (lengthS: number) => ({ projectId: PID, question: "q", topic: "t", learningGoal: "After watching, the viewer can explain it", level: "deep" as const, ageMode: null, tone: "neutral" as const, background: "light" as const, lengthS, wordBudget: Math.round((lengthS / 60) * 165), sceneRange: [4, 9] as [number, number], statement: "s", derivedFrom: null });
+const sceneWith = (beat: string, sentences: number) => ({
+  beat, purpose: "p", claimIds: ["c1"], visualDirection: "a leaf as a stage, a spotlight, an orange set", visualType: "still-animated", targetS: 25, onScreenTerms: [],
+  narration: Array.from({ length: sentences }, (_, i) => `Sentence ${i + 1} about the ${beat} has ten words in it.`).join(" "),
+});
+
+test("deep research is capped at the 3-minute default instead of 5 minutes", async () => {
+  const claims = Array.from({ length: 12 }, (_, i) => ({ id: `c${i + 1}`, text: `claim ${i + 1}`, type: "fact", fit: "needed", evidence: [0], contested: false }));
+  const llm = scriptedLLM([
+    [/web search queries/, { queries: ["a", "b", "c"] }],
+    [/Extract the claims/, { claims: [{ text: "claim", type: "fact", fit: "needed", quote: "claim" }] }],
+    [/Merge overlapping claims/, { claims, misconceptions: [], analogies: [] }],
+  ]);
+  const ctx = ctxWith(llm);
+  ctx.search = { search: async () => [{ url: "https://a.edu/x", title: "A", snippet: "s" }], open: async (url) => ({ url, title: "A", text: "x".repeat(600) }) };
+  const { brief } = await runResearch(ctx, briefFor(0) as any);
+  assert.equal(brief.lengthS, 180, "12 needed claims would be 300 s without the cap");
+  assert.match((ctx.store as MemoryStore).events.at(-1)!.message, /condensing them into a 3-minute video/);
+});
+
+test("a script that would run past 3 minutes is sent back with the numbers and rewritten shorter", async () => {
+  const systems: string[] = [];
+  let draft = 0;
+  const llm: LLM = {
+    async json<T>(a: { system: string; schema: z.ZodType<T> }) {
+      systems.push(a.system);
+      if (/exactly seven beats/.test(a.system)) return a.schema.parse({ beats: BEATS7.map((b) => ({ beat: b, purpose: "p", claimIds: ["c1"], targetS: 25 })) });
+      // First draft: 7 scenes × 8 sentences × 10 words = 560 words (~3:54). Second: 7 × 4 × 10 = 280 words.
+      if (/Write the scenes/.test(a.system)) return a.schema.parse({ scenes: BEATS7.map((b) => sceneWith(b, ++draft <= 7 ? 8 : 4)) });
+      if (/You will hear the narration/.test(a.system)) return a.schema.parse({ goalAnswer: "g", unclearSentences: [], couldMeetGoal: true });
+      if (/careful subject expert/.test(a.system)) return a.schema.parse({ unsourced: [], overstated: [] });
+      throw new Error("unexpected");
+    },
+    async vision<T>(a: { schema: z.ZodType<T> }) { return a.schema.parse({}); },
+  };
+  const plan = await script(ctxWith(llm), briefFor(180), research);
+  const sceneCalls = systems.filter((x) => /Write the scenes/.test(x));
+  assert.equal(sceneCalls.length, 2);
+  assert.doesNotMatch(sceneCalls[0]!, /LENGTH:/);
+  assert.match(sceneCalls[1]!, /LENGTH: Your previous draft had 560 words .*under 3:00/);
+  assert.equal(systems.filter((x) => /You will hear the narration/.test(x)).length, 1, "the over-long draft isn't reviewed");
+  assert.ok(estimateVideoS(plan.scenes, 165) <= 180);
+  assert.equal(plan.review.attempts, 2);
+});
+
+test("if every rewrite runs long, middle scenes are trimmed until it fits; hook and recap stay whole", async () => {
+  const llm = scriptedLLM([
+    [/exactly seven beats/, { beats: BEATS7.map((b) => ({ beat: b, purpose: "p", claimIds: ["c1"], targetS: 25 })) }],
+    [/Write the scenes/, { scenes: BEATS7.map((b) => sceneWith(b, 9)) }],
+    [/You will hear the narration/, { goalAnswer: "g", unclearSentences: [], couldMeetGoal: true }],
+    [/careful subject expert/, { unsourced: [], overstated: [] }],
+  ]);
+  const plan = await script(ctxWith(llm), briefFor(180), research);
+  assert.ok(estimateVideoS(plan.scenes, 165) <= 180 * 0.95, `estimated ${estimateVideoS(plan.scenes, 165)} s`);
+  assert.equal(plan.scenes[0]!.narration, sceneWith("hook", 9).narration);
+  assert.equal(plan.scenes.at(-1)!.narration, sceneWith("recap", 9).narration);
+  assert.deepEqual(plan.scenes.map((s) => s.id), plan.scenes.map((_, i) => `s${i + 1}`));
+});
+
+test("trimToFit drops whole middle scenes only when sentences run out, and keeps at least 3", () => {
+  const scenes = BEATS7.map((b, i) => ({ ...sceneWith(b, 1), id: `s${i + 1}`, render: null })) as any;
+  const out = trimToFit(scenes, 10, 165);
+  assert.equal(out.length, 3);
+  assert.equal(out[0]!.beat, "hook");
+  assert.equal(out.at(-1)!.beat, "recap");
 });

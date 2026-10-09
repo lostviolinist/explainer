@@ -64,6 +64,7 @@ Every Hedra call carries an idempotency key from a hash of its input, so retries
 | Narrator: David O. on `elevenlabs-multilingual-v2` at 1.1× | `config/house-style.json` → `voice` |
 | Models per visual type (`kling-25-turbo` stills-in-motion, `wan-3-0` clips, `minimax-h3` retry) | `config/house-style.json` → `models` |
 | Scene budget: ~165 wpm, 20–40 s scenes | `packages/schemas/src/index.ts` → `sceneBudget` |
+| Length cap: 3 min (`MAX_VIDEO_SECONDS`); over-long scripts are rewritten, then trimmed, before any media is made | `packages/pipeline/src/stages/script.ts` → `estimateVideoS`, `trimToFit` |
 | QA pass thresholds and demotion ladder | `packages/pipeline/src/stages/visuals.ts` |
 
 ## Still to wire up

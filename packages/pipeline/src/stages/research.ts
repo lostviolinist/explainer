@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { ResearchBrief, Claim, lengthFromClaims, sceneBudget, type Brief } from "@explainer/schemas";
 import type { Ctx } from "../context.js";
-import { makeProgress } from "../context.js";
+import { makeProgress, maxVideoSeconds } from "../context.js";
 import { domainReputation } from "../providers/search.js";
 
 export const Queries = z.object({ queries: z.array(z.string()).min(3).max(6) });
@@ -124,7 +124,9 @@ export async function research(ctx: Ctx, brief: Brief): Promise<{ research: Rese
   });
 
   const neededClaimCount = claims.filter((c) => c.fit === "needed" && c.confidence !== "contested").length;
-  const lengthS = lengthFromClaims(neededClaimCount);
+  // Deep topics would run longer; the cap condenses them (the script stage drops the extras).
+  const fullS = lengthFromClaims(neededClaimCount);
+  const lengthS = Math.min(fullS, maxVideoSeconds());
   const budget = sceneBudget(lengthS, ctx.style.voice.wordsPerMinute);
 
   const researchBrief = ResearchBrief.parse({
@@ -145,6 +147,7 @@ export async function research(ctx: Ctx, brief: Brief): Promise<{ research: Rese
   const updatedBrief: Brief = { ...brief, lengthS, wordBudget: budget.wordBudget, sceneRange: budget.sceneRange };
   await ctx.store.saveResearch(researchBrief);
   await ctx.store.saveBrief(updatedBrief);
-  await progress(`found ${claims.length} claims, planning a ${Math.round(lengthS / 60)}-minute video`, 1);
+  const minutes = `${+(lengthS / 60).toFixed(1)}-minute`;
+  await progress(fullS > lengthS ? `found ${claims.length} claims, condensing them into a ${minutes} video` : `found ${claims.length} claims, planning a ${minutes} video`, 1);
   return { research: researchBrief, brief: updatedBrief };
 }
