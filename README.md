@@ -20,7 +20,7 @@ config/house-style.json  the style, reference frame asset ids, voice, model allo
 Requires Docker Desktop (or Docker Engine with Compose). Starts Postgres, an S3-compatible store (SeaweedFS), the Inngest dev server, and the app; tables and the bucket are created on startup.
 
 ```bash
-cp .env.example .env            # fill in HEDRA_API_KEY, ANTHROPIC_API_KEY, TAVILY_API_KEY
+cp .env.example .env            # fill in HEDRA_API_KEY, OPENAI_API_KEY, EXA_API_KEY
 docker compose up --build
 ```
 
@@ -28,7 +28,7 @@ App: http://localhost:3000 · Inngest runs (step-by-step logs and errors): http:
 
 ## Running locally
 
-Requirements: Node 22, pnpm 10, Postgres, an S3-compatible bucket (MinIO is fine), and keys for Hedra, Anthropic, and a search provider.
+Requirements: Node 22, pnpm 10, Postgres, an S3-compatible bucket (MinIO is fine), and keys for Hedra, OpenAI, and Exa.
 
 ```bash
 cp .env.example .env            # fill in keys; never commit .env

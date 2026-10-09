@@ -3,8 +3,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { HedraClient, AssetMirror } from "@explainer/hedra";
 import type { ProgressEvent, Stage } from "@explainer/schemas";
-import { AnthropicLLM, type LLM } from "./providers/llm.js";
-import { TavilySearch, type Search } from "./providers/search.js";
+import { OpenAILLM, type LLM } from "./providers/llm.js";
+import { ExaSearch, type Search } from "./providers/search.js";
 import { FallbackAligner, HttpAligner, type Aligner } from "./providers/alignment.js";
 import type { ArtifactStore } from "./providers/store.js";
 
@@ -57,8 +57,8 @@ export function ctxFromEnv(store: ArtifactStore): Ctx {
     return v;
   };
   return {
-    llm: new AnthropicLLM(need("ANTHROPIC_API_KEY")),
-    search: new TavilySearch(need("TAVILY_API_KEY")),
+    llm: new OpenAILLM(need("OPENAI_API_KEY")),
+    search: new ExaSearch(need("EXA_API_KEY")),
     hedra: new HedraClient({ apiKey: need("HEDRA_API_KEY"), baseUrl: env.HEDRA_API_BASE, webhookUrl: env.HEDRA_WEBHOOK_URL }),
     mirror: new AssetMirror({
       endpoint: env.S3_ENDPOINT,

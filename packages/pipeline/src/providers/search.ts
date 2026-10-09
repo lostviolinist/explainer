@@ -1,3 +1,5 @@
+import Exa from "exa-js";
+
 /**
  * Web search + page fetch for the research stage.
  * Pages that fail to open are dropped, never summarised from a snippet.
@@ -31,30 +33,25 @@ export function domainReputation(url: string): number {
   return 0.4;
 }
 
-export class TavilySearch implements Search {
-  constructor(private apiKey: string, private f: typeof fetch = fetch) {}
+export class ExaSearch implements Search {
+  private exa: Exa;
+  constructor(apiKey: string) {
+    this.exa = new Exa(apiKey);
+  }
 
   async search(query: string, limit = 8): Promise<SearchHit[]> {
-    const res = await this.f("https://api.tavily.com/search", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ api_key: this.apiKey, query, max_results: limit, include_answer: false }),
-    });
-    if (!res.ok) throw new Error(`search failed: ${res.status}`);
-    const data = (await res.json()) as { results: { url: string; title: string; content: string }[] };
-    return data.results.map((r) => ({ url: r.url, title: r.title, snippet: r.content }));
+    const res = await this.exa.search(query, { numResults: limit, type: "auto", contents: { highlights: true } });
+    return res.results.map((r) => ({ url: r.url, title: r.title ?? r.url, snippet: r.highlights.join(" … ") }));
   }
 
   async open(url: string): Promise<PageText | null> {
-    const res = await this.f("https://api.tavily.com/extract", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ api_key: this.apiKey, urls: [url] }),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { results: { url: string; raw_content: string }[] };
-    const r = data.results[0];
-    if (!r?.raw_content) return null;
-    return { url, title: url, text: r.raw_content.slice(0, 40_000) };
+    try {
+      const res = await this.exa.getContents([url], { text: { maxCharacters: 40_000 } });
+      const r = res.results[0];
+      if (!r?.text) return null;
+      return { url, title: r.title ?? url, text: r.text };
+    } catch {
+      return null;
+    }
   }
 }

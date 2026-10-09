@@ -1,9 +1,9 @@
 /**
- * LLM provider. One strong model for research/script/planning, one cheap
- * vision model for QA. Everything returns parsed JSON validated by a zod
+ * LLM provider (OpenAI). One model for research/script/planning, one for
+ * vision QA; both default to gpt-6.1-sol and can be overridden by env. Everything returns parsed JSON validated by a zod
  * schema; a parse failure retries once with the error fed back.
  */
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import type { z } from "zod";
 
 export interface LLM {
@@ -19,37 +19,50 @@ function extractJson(text: string): unknown {
   return JSON.parse(raw.slice(start, end + 1));
 }
 
-export class AnthropicLLM implements LLM {
-  private client: Anthropic;
+/**
+ * Images are sent inline: our asset URLs (e.g. http://localhost:9000 in local
+ * dev, or a private bucket) aren't reachable from OpenAI's servers.
+ */
+async function inlineImage(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`could not fetch image for vision QA: ${res.status} ${url}`);
+  const type = res.headers.get("content-type") ?? "image/png";
+  if (!type.startsWith("image/")) throw new Error(`vision QA needs an image, got ${type}: ${url}`);
+  return `data:${type};base64,${Buffer.from(await res.arrayBuffer()).toString("base64")}`;
+}
+
+/**
+ * Reasoning tokens count against OpenAI's max_output_tokens, so the per-call
+ * budgets the stages pass (sized for the visible JSON) get this added on top.
+ */
+const REASONING_HEADROOM = 16_000;
+
+type Input = OpenAI.Responses.ResponseInputMessageContentList;
+
+export class OpenAILLM implements LLM {
+  private client: OpenAI;
   constructor(
     apiKey: string,
-    private model = process.env.LLM_MODEL ?? "claude-sonnet-4-5",
-    private visionModel = process.env.LLM_VISION_MODEL ?? "claude-haiku-4-5",
+    private model = process.env.LLM_MODEL || "gpt-6.1-sol",
+    private visionModel = process.env.LLM_VISION_MODEL || "gpt-6.1-sol",
   ) {
-    this.client = new Anthropic({ apiKey });
+    this.client = new OpenAI({ apiKey });
   }
 
-  private async call(model: string, system: string, content: Anthropic.MessageParam["content"], maxTokens: number) {
-    const res = await this.client.messages.create({
+  private async call(model: string, system: string, content: Input, maxTokens: number) {
+    const res = await this.client.responses.create({
       model,
-      max_tokens: maxTokens,
-      system: system + "\n\nRespond with a single JSON object and nothing else.",
-      messages: [{ role: "user", content }],
+      instructions: system + "\n\nRespond with a single JSON object and nothing else.",
+      // JSON mode requires the word "JSON" in the input itself, not only the instructions.
+      input: [{ role: "user", content: [...content, { type: "input_text", text: "Reply in JSON." }] }],
+      text: { format: { type: "json_object" } },
+      max_output_tokens: maxTokens + REASONING_HEADROOM,
     });
-    const text = res.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-    return text;
+    if (res.status === "incomplete") throw new Error(`LLM response incomplete: ${res.incomplete_details?.reason ?? "unknown"}`);
+    return res.output_text;
   }
 
-  private async parseWithRetry<T>(
-    model: string,
-    system: string,
-    content: Anthropic.MessageParam["content"],
-    schema: z.ZodType<T>,
-    maxTokens: number,
-  ): Promise<T> {
+  private async parseWithRetry<T>(model: string, system: string, content: Input, schema: z.ZodType<T>, maxTokens: number): Promise<T> {
     let text = await this.call(model, system, content, maxTokens);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -57,25 +70,20 @@ export class AnthropicLLM implements LLM {
       } catch (e) {
         if (attempt === 1) throw e;
         const fix = `Your previous output failed validation: ${(e as Error).message}. Return corrected JSON only.`;
-        text = await this.call(
-          model,
-          system,
-          [...(Array.isArray(content) ? content : [{ type: "text" as const, text: content as string }]), { type: "text" as const, text: fix }],
-          maxTokens,
-        );
+        text = await this.call(model, system, [...content, { type: "input_text", text: fix }], maxTokens);
       }
     }
     throw new Error("unreachable");
   }
 
   json<T>(a: { system: string; user: string; schema: z.ZodType<T>; maxTokens?: number }) {
-    return this.parseWithRetry(this.model, a.system, a.user, a.schema, a.maxTokens ?? 8000);
+    return this.parseWithRetry(this.model, a.system, [{ type: "input_text", text: a.user }], a.schema, a.maxTokens ?? 8000);
   }
 
-  vision<T>(a: { system: string; user: string; imageUrls: string[]; schema: z.ZodType<T> }) {
-    const content: Anthropic.MessageParam["content"] = [
-      ...a.imageUrls.map((url) => ({ type: "image" as const, source: { type: "url" as const, url } })),
-      { type: "text" as const, text: a.user },
+  async vision<T>(a: { system: string; user: string; imageUrls: string[]; schema: z.ZodType<T> }) {
+    const content: Input = [
+      ...(await Promise.all(a.imageUrls.map(inlineImage))).map((url) => ({ type: "input_image" as const, image_url: url, detail: "auto" as const })),
+      { type: "input_text" as const, text: a.user },
     ];
     return this.parseWithRetry(this.visionModel, a.system, content, a.schema, 2000);
   }

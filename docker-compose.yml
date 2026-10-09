@@ -1,5 +1,5 @@
 # Local stack: Postgres, SeaweedFS (S3), Inngest dev server, and the web app.
-#   cp .env.example .env   # add HEDRA_API_KEY, ANTHROPIC_API_KEY, TAVILY_API_KEY
+#   cp .env.example .env   # add HEDRA_API_KEY, OPENAI_API_KEY, EXA_API_KEY
 #   docker compose up --build
 # App: http://localhost:3000   Inngest runs: http://localhost:8288
 #
