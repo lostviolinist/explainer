@@ -21,6 +21,7 @@ Requirements: Node 22, pnpm 10, Postgres, an S3-compatible bucket (MinIO is fine
 
 ```bash
 cp .env.example .env            # fill in keys; never commit .env
+ln -s ../../.env apps/web/.env  # Next.js only reads .env from apps/web
 pnpm install
 pnpm db:push                    # creates tables via drizzle-kit
 pnpm dev                        # Next.js on :3000
