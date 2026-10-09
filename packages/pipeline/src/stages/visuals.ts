@@ -16,12 +16,12 @@ import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
 import { rescale } from "../providers/alignment.js";
 
-const Planned = z.object({
+export const Planned = z.object({
   hedraPrompt: z.string().nullable(),
   animSpec: AnimSpec,
 });
 
-const VisionScore = z.object({
+export const VisionScore = z.object({
   matchesDirection: z.number().min(0).max(1),
   styleMatch: z.number().min(0).max(1),
   hasText: z.boolean(),

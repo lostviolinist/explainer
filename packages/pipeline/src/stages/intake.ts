@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Brief, Level, Tone, Background } from "@explainer/schemas";
 import type { Ctx } from "../context.js";
 
-const Inferred = z.object({
+export const Inferred = z.object({
   topic: z.string(),
   learningGoal: z.string(),
   level: Level,

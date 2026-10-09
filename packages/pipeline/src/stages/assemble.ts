@@ -35,8 +35,8 @@ export interface Renderer {
   render(props: RenderProps): Promise<{ videoUrl: string; srtUrl: string; durationS: number }>;
 }
 
-const Watchability = z.object({ goalAnswer: z.string(), couldMeetGoal: z.boolean(), confusingScenes: z.array(z.string()) });
-const FactCheck = z.object({ driftedSentences: z.array(z.string()) });
+export const Watchability = z.object({ goalAnswer: z.string(), couldMeetGoal: z.boolean(), confusingScenes: z.array(z.string()) });
+export const FactCheck = z.object({ driftedSentences: z.array(z.string()) });
 
 export function buildRenderProps(brief: Brief, plan: ScenePlan, assets: SceneAssets[], research: ResearchBrief): RenderProps {
   const byScene = new Map(assets.map((a) => [a.sceneId, a]));

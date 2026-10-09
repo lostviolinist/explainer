@@ -16,11 +16,11 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
-import type { z } from "zod";
+import Ajv from "ajv";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { eq } from "drizzle-orm";
 import { AssetMirror, HedraError, type JobResult } from "@explainer/hedra";
-import { makeFunctions, loadHouseStyle, FallbackAligner, type Ctx, type LLM, type Search } from "@explainer/pipeline";
+import { makeFunctions, loadHouseStyle, FallbackAligner, OpenAILLM, type Ctx, type Search } from "@explainer/pipeline";
 import { LocalRenderer, FfmpegFrameSampler, remotionFf } from "@explainer/render";
 import { db, schema } from "../src/lib/db";
 import { drizzleStore } from "../src/lib/store";
@@ -111,62 +111,98 @@ const NARRATION: Record<string, string> = {
 const TYPES: Record<string, string> = { hook: "still-animated", ground: "diagram", misconception: "clip", "build-up": "presenter", core: "reference-seq", payoff: "chart", recap: "text" };
 const BEATS = Object.keys(NARRATION);
 
-function fakeLLM(log: string[]): LLM {
-  let visionCalls = 0;
-  const answer = (system: string, user: string): unknown => {
-    if (/turn a learner's question/.test(system)) return { topic: "why the sky is blue", learningGoal: "After watching, the viewer can explain why the daytime sky looks blue.", level: "basics", ageMode: null, tone: "neutral", background: "light", statement: "A 3-minute neutral explainer on sky colour." };
-    if (/web search queries/.test(system)) return { queries: ["why is the sky blue", "rayleigh scattering wavelength", "sky blue misconception ocean"] };
-    if (/Extract the claims from this page/.test(system)) {
-      const k = Object.keys(TITLES).findIndex((u) => user.includes(u));
-      return { claims: [0, 1, 2].map((j) => FACTS[(Math.max(0, k) * 2 + j) % FACTS.length]!).map((text, j) => ({ text, type: j === 2 ? "number" : "fact", fit: j === 0 ? "needed" : "nice", quote: text.slice(0, 200) })) };
-    }
-    if (/Merge overlapping claims/.test(system)) return {
-      claims: [
-        { id: "c1", text: "Sunlight contains all visible wavelengths.", type: "fact", fit: "needed", evidence: [0, 3], contested: false },
-        { id: "c2", text: "Air molecules scatter shorter wavelengths more strongly (Rayleigh scattering).", type: "process", fit: "needed", evidence: [1, 4], contested: false },
-        { id: "c3", text: "Blue light scatters about five times more than red.", type: "number", fit: "nice", evidence: [2, 99], contested: false },
-      ],
-      misconceptions: [
-        { belief: "The sky is blue because it reflects the colour of the ocean.", correctsWith: ["c2"] },
-        { belief: "Sunsets are red because the Sun cools down in the evening.", correctsWith: ["c1"] },
-      ],
-      analogies: [{ text: "Like small pebbles deflecting ripples", explains: ["c2"], breaksDown: "light is not a water wave" }],
-    };
-    if (/exactly seven beats/.test(system)) return { beats: BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, claimIds: ["c1", "c2"], targetS: 17 })) };
-    if (/Write the scenes for this arc/.test(system)) return { scenes: BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, narration: NARRATION[b], claimIds: ["c1", "c2"], visualDirection: `a sunbeam as a bundle of coloured threads for the ${b}, with air molecules as tiny beads and an eye looking up`, visualType: TYPES[b], targetS: b === "misconception" ? 60 : 12, onScreenTerms: b === "ground" ? ["wavelength"] : [] })) };
-    if (/You will hear the narration/.test(system)) return { goalAnswer: "Air scatters blue light most.", unclearSentences: [], couldMeetGoal: true };
-    if (/careful subject expert/.test(system)) return { unsourced: [], overstated: [] };
-    if (/You write generation prompts/.test(system)) {
-      const type = /\(([a-z-]+), ([a-z-]+)\)/.exec(user)?.[2];
-      const animSpec =
-        type === "diagram" ? { kind: "labelled-diagram", labels: [{ text: "wavelength", cueWord: "wavelength" }, { text: "sunlight", cueWord: "Sunlight" }] }
-        : type === "chart" ? { kind: "chart", chartType: "bar", series: [{ label: "blue", value: 5 }, { label: "red", value: 1 }], claimId: "c3" }
-        : type === "text" ? { kind: "kinetic-text", lines: [{ text: "Short waves scatter most", cueWord: "explain" }] }
-        : { kind: "none" };
-      return { hedraPrompt: type === "chart" || type === "text" ? null : "Flat vector illustration, detailed. A sunbeam splitting into coloured threads. No text, no labels.", animSpec };
-    }
-    if (/Final transcript check/.test(system)) return { driftedSentences: [] };
-    if (/You are the intended learner/.test(system)) return { goalAnswer: "Blue scatters most.", couldMeetGoal: true, confusingScenes: [] };
-    throw new Error(`fake LLM has no answer for: ${system.slice(0, 80)}`);
+/** Canned answers by prompt; the real OpenAILLM sends them through a fake Responses API below. */
+function answer(system: string, user: string): unknown {
+  if (/turn a learner's question/.test(system)) return { topic: "why the sky is blue", learningGoal: "After watching, the viewer can explain why the daytime sky looks blue.", level: "basics", ageMode: null, tone: "neutral", background: "light", statement: "A 3-minute neutral explainer on sky colour." };
+  if (/web search queries/.test(system)) return { queries: ["why is the sky blue", "rayleigh scattering wavelength", "sky blue misconception ocean"] };
+  if (/Extract the claims from this page/.test(system)) {
+    const k = Object.keys(TITLES).findIndex((u) => user.includes(u));
+    return { claims: [0, 1, 2].map((j) => FACTS[(Math.max(0, k) * 2 + j) % FACTS.length]!).map((text, j) => ({ text, type: j === 2 ? "number" : "fact", fit: j === 0 ? "needed" : "nice", quote: text.slice(0, 200) })) };
+  }
+  if (/Merge overlapping claims/.test(system)) return {
+    claims: [
+      { id: "c1", text: "Sunlight contains all visible wavelengths.", type: "fact", fit: "needed", evidence: [0, 3], contested: false },
+      { id: "c2", text: "Air molecules scatter shorter wavelengths more strongly (Rayleigh scattering).", type: "process", fit: "needed", evidence: [1, 4], contested: false },
+      { id: "c3", text: "Blue light scatters about five times more than red.", type: "number", fit: "nice", evidence: [2, 99], contested: false },
+    ],
+    misconceptions: [
+      { belief: "The sky is blue because it reflects the colour of the ocean.", correctsWith: ["c2"] },
+      { belief: "Sunsets are red because the Sun cools down in the evening.", correctsWith: ["c1"] },
+    ],
+    analogies: [{ text: "Like small pebbles deflecting ripples", explains: ["c2"], breaksDown: "light is not a water wave" }],
   };
-  return {
-    async json<T>(a: { system: string; user: string; schema: z.ZodType<T> }) {
-      log.push(`llm.json ${a.system.slice(0, 40)}`);
-      await pause();
-      return a.schema.parse(answer(a.system, a.user));
-    },
-    async vision<T>(a: { imageUrls: string[]; schema: z.ZodType<T> }) {
+  if (/exactly seven beats/.test(system)) return { beats: BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, claimIds: ["c1", "c2"], targetS: 17 })) };
+  if (/Write the scenes for this arc/.test(system)) return { scenes: BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, narration: NARRATION[b], claimIds: ["c1", "c2"], visualDirection: `a sunbeam as a bundle of coloured threads for the ${b}, with air molecules as tiny beads and an eye looking up`, visualType: TYPES[b], targetS: b === "misconception" ? 60 : 12, onScreenTerms: b === "ground" ? ["wavelength"] : [] })) };
+  if (/You will hear the narration/.test(system)) return { goalAnswer: "Air scatters blue light most.", unclearSentences: [], couldMeetGoal: true };
+  if (/careful subject expert/.test(system)) return { unsourced: [], overstated: [] };
+  if (/You write generation prompts/.test(system)) {
+    const type = /\(([a-z-]+), ([a-z-]+)\)/.exec(user)?.[2];
+    const animSpec =
+      type === "diagram" ? { kind: "labelled-diagram", labels: [{ text: "wavelength", cueWord: "wavelength" }, { text: "sunlight", cueWord: "Sunlight" }] }
+      : type === "chart" ? { kind: "chart", chartType: "bar", series: [{ label: "blue", value: 5 }, { label: "red", value: 1 }], claimId: "c3" }
+      : type === "text" ? { kind: "kinetic-text", lines: [{ text: "Short waves scatter most", cueWord: "explain" }] }
+      : { kind: "none" };
+    return { hedraPrompt: type === "chart" || type === "text" ? null : "Flat vector illustration, detailed. A sunbeam splitting into coloured threads. No text, no labels.", animSpec };
+  }
+  if (/Final transcript check/.test(system)) return { driftedSentences: [] };
+  if (/You are the intended learner/.test(system)) return { goalAnswer: "Blue scatters most.", couldMeetGoal: true, confusingScenes: [] };
+  throw new Error(`fake LLM has no answer for: ${system.slice(0, 80)}`);
+}
+
+/** OpenAI structured outputs: every object closed and every property required. */
+function strictProblems(node: any, path: string, defs: Record<string, any>, out: string[] = [], seen = new Set<any>()): string[] {
+  if (!node || typeof node !== "object" || seen.has(node)) return out;
+  seen.add(node);
+  if (node.$ref) return strictProblems(defs[String(node.$ref).split("/").pop()!], path, defs, out, seen);
+  if (node.type === "object" || node.properties) {
+    if (node.additionalProperties !== false) out.push(`${path}: additionalProperties must be false`);
+    const missing = Object.keys(node.properties ?? {}).filter((k) => !(node.required ?? []).includes(k));
+    if (missing.length) out.push(`${path}: not required: ${missing.join(", ")}`);
+    for (const [k, v] of Object.entries(node.properties ?? {})) strictProblems(v, `${path}.${k}`, defs, out, seen);
+  }
+  if (node.items) strictProblems(node.items, `${path}[]`, defs, out, seen);
+  for (const k of ["anyOf", "allOf"]) (node[k] ?? []).forEach((n: any, i: number) => strictProblems(n, `${path}|${i}`, defs, out, seen));
+  if (node.oneOf) out.push(`${path}: oneOf is not supported`);
+  return out;
+}
+
+/**
+ * A local stand-in for POST /v1/responses. It refuses what the real API would
+ * (no strict JSON schema, schema not strict-compatible, images that aren't
+ * images) and checks the canned answer fits the schema that was sent, so a
+ * stage whose fields the model can't know fails here, not in production.
+ */
+function fakeOpenAI(log: string[], bad: string[]) {
+  const ajv = new Ajv({ strict: false, allErrors: true });
+  let visionCalls = 0;
+  return async (body: any) => {
+    const format = body.text?.format;
+    const where = String(body.instructions ?? "").slice(0, 50);
+    if (format?.type !== "json_schema" || format.strict !== true) bad.push(`OpenAI request without a strict JSON schema: ${where}`);
+    const schema = format?.schema ?? {};
+    const problems = strictProblems(schema, "answer", schema.$defs ?? schema.definitions ?? {});
+    if (problems.length) bad.push(`OpenAI schema not strict-compatible (${where}): ${problems.join("; ")}`);
+    const parts = (body.input ?? []).flatMap((m: any) => m.content ?? []);
+    const user = parts.filter((p: any) => p.type === "input_text").map((p: any) => p.text).join("\n");
+    const images = parts.filter((p: any) => p.type === "input_image").map((p: any) => String(p.image_url));
+    for (const u of images) if (!/^data:image\//.test(u)) bad.push(`vision got a non-image input: ${u.slice(0, 60)}`);
+    await pause();
+    let ans: unknown;
+    if (images.length) {
       const n = ++visionCalls;
-      await pause();
-      for (const u of a.imageUrls) {
-        const r = await fetch(u);
-        if (!r.ok || !(r.headers.get("content-type") ?? "").startsWith("image/")) throw new Error(`vision got a non-image: ${u.slice(0, 80)}`);
-      }
-      log.push(`llm.vision ${a.imageUrls.length} image(s)`);
-      // The 3rd check fails once, to exercise the retry path.
-      const ok = n !== 3;
-      return a.schema.parse({ matchesDirection: ok ? 0.9 : 0.3, styleMatch: 0.9, hasText: false, notes: ok ? "ok" : "wrong metaphor" });
-    },
+      log.push(`llm.vision ${images.length} image(s)`);
+      const ok = n !== 3; // the 3rd check fails once, to exercise the retry path
+      ans = { matchesDirection: ok ? 0.9 : 0.3, styleMatch: 0.9, hasText: false, notes: ok ? "ok" : "wrong metaphor" };
+    } else {
+      log.push(`llm.json ${where}`);
+      ans = answer(String(body.instructions ?? ""), user);
+    }
+    const validate = ajv.compile(schema);
+    if (!validate(ans)) bad.push(`a correct answer doesn't fit the schema sent (${where}): ${ajv.errorsText(validate.errors)}`);
+    return {
+      id: `resp_${Date.now()}`, object: "response", created_at: Math.floor(Date.now() / 1000), status: "completed", model: body.model,
+      output: [{ type: "message", id: "msg_1", status: "completed", role: "assistant", content: [{ type: "output_text", text: JSON.stringify(ans), annotations: [] }] }],
+    };
   };
 }
 
@@ -204,7 +240,21 @@ const fakeSearch: Search = {
 async function main() {
   const dir = mkdtempSync(join(tmpdir(), "smoke-"));
   const media = new Map<string, { bytes: Buffer; type: string }>();
+  const log: string[] = [];
+  const bad: string[] = [];
+  const openai = fakeOpenAI(log, bad);
   const server = http.createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/v1/responses") {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        openai(JSON.parse(raw)).then(
+          (r) => res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(r)),
+          (e: Error) => res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: e.message, type: "invalid_request_error" } })),
+        );
+      });
+      return;
+    }
     const m = media.get(req.url ?? "");
     if (!m) return res.writeHead(404).end();
     res.writeHead(200, { "content-type": m.type, "content-length": m.bytes.length }).end(m.bytes);
@@ -219,8 +269,6 @@ async function main() {
   const stills = (process.env.SMOKE_STILLS ?? "").split(",").filter(Boolean);
   stills.forEach((f, i) => media.set(`/still-${i}.png`, { bytes: readFileSync(f), type: "image/png" }));
 
-  const log: string[] = [];
-  const bad: string[] = [];
   let jobs = 0;
   let moderated = false;
   const hedra = {
@@ -229,7 +277,7 @@ async function main() {
       if (!model.startsWith("elevenlabs")) await pause();
       const v = violations(model, input);
       if (v.length) {
-        bad.push(`${model}: ${v.join("; ")}`);
+        bad.push(`Hedra schema violation: ${model}: ${v.join("; ")}`);
         throw new HedraError(`Invalid input: ${v.join("; ")}`, "INVALID_ARGUMENT", 400, false);
       }
       // First still is refused by moderation once, to exercise model fallback.
@@ -269,7 +317,8 @@ async function main() {
   };
 
   const ctx: Ctx = {
-    llm: fakeLLM(log),
+    // The real provider, pointed at the fake Responses API.
+    llm: (process.env.OPENAI_BASE_URL = `${base}/v1`, new OpenAILLM("sk-smoke")),
     search: fakeSearch,
     hedra: hedra as any,
     mirror: new AssetMirror(s3cfg),
@@ -301,7 +350,7 @@ async function main() {
   console.log(`pipeline finished in ${((Date.now() - t0) / 1000).toFixed(0)}s → ${result.videoUrl} (${result.durationS.toFixed(1)}s)`);
 
   // ---- checks
-  const fail: string[] = [...bad.map((b) => `Hedra schema violation: ${b}`)];
+  const fail: string[] = [...bad];
   const [p] = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId));
   if (p?.stage !== "done") fail.push(`project stage is ${p?.stage}, expected done`);
 

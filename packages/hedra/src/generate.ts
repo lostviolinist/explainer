@@ -26,6 +26,10 @@ export function idemKey(scope: string, model: string, input: unknown): string {
 
 export const asset = (id: string): MediaRef => ({ source: "asset", asset_id: id });
 
+/** Prompt length limits from each model's input schema; longer prompts are rejected. */
+const PROMPT_MAX: [prefix: string, max: number][] = [["recraft", 1000], ["kling", 2500], ["wan", 5000], ["minimax", 7000], ["gpt-image", 32000]];
+const fitPrompt = (model: string, prompt: string) => prompt.slice(0, PROMPT_MAX.find(([p]) => model.startsWith(p))?.[1] ?? 2500);
+
 async function withFallback(
   client: HedraClient,
   scope: string,
@@ -67,12 +71,11 @@ export interface StillArgs {
 export function generateStill(client: HedraClient, scope: string, models: string[], a: StillArgs) {
   return withFallback(client, scope, models, (model) => {
     const base: Record<string, unknown> = {
-      prompt: a.prompt,
+      prompt: fitPrompt(model, a.prompt),
       aspect_ratio: a.aspectRatio ?? "16:9",
     };
     if (model.startsWith("recraft")) {
-      // Text-only: no reference images; prompt capped at 1000 chars.
-      base.prompt = a.prompt.slice(0, 1000);
+      // Text-only: no reference images.
       base.resolution = a.resolution ?? "1080p";
       return base;
     }
@@ -104,7 +107,7 @@ export interface AnimatedStillArgs {
 export function animateStill(client: HedraClient, scope: string, models: string[], a: AnimatedStillArgs) {
   return withFallback(client, scope, models, (model) => {
     const input: Record<string, unknown> = {
-      prompt: a.prompt,
+      prompt: fitPrompt(model, a.prompt),
       aspect_ratio: "16:9",
       duration_ms: a.durationMs ?? 5000,
       start_image: asset(a.startAssetId),
@@ -129,7 +132,7 @@ export interface ClipArgs {
 export function generateClip(client: HedraClient, scope: string, models: string[], a: ClipArgs) {
   return withFallback(client, scope, models, (model) => {
     const input: Record<string, unknown> = {
-      prompt: a.prompt,
+      prompt: fitPrompt(model, a.prompt),
       aspect_ratio: "16:9",
       duration_ms: a.durationMs ?? 5000,
       images: a.references.map(asset),

@@ -1,9 +1,14 @@
 /**
  * LLM provider (OpenAI). One model for research/script/planning, one for
- * vision QA; both default to gpt-6.1-sol and can be overridden by env. Everything returns parsed JSON validated by a zod
- * schema; a parse failure retries once with the error fed back.
+ * vision QA; both default to gpt-6.1-sol and can be overridden by env.
+ *
+ * Every call sends its zod schema as a strict JSON schema (structured outputs),
+ * so the model can only answer with the exact fields the stage reads. The
+ * answer is still validated with zod (for limits JSON schema can't express);
+ * a failure retries once with the error fed back.
  */
 import OpenAI from "openai";
+import { zodTextFormat } from "openai/helpers/zod";
 import type { z } from "zod";
 
 export interface LLM {
@@ -49,28 +54,29 @@ export class OpenAILLM implements LLM {
     this.client = new OpenAI({ apiKey });
   }
 
-  private async call(model: string, system: string, content: Input, maxTokens: number) {
+  private async call(model: string, system: string, content: Input, schema: z.ZodType<unknown>, maxTokens: number) {
     const res = await this.client.responses.create({
       model,
-      instructions: system + "\n\nRespond with a single JSON object and nothing else.",
-      // JSON mode requires the word "JSON" in the input itself, not only the instructions.
-      input: [{ role: "user", content: [...content, { type: "input_text", text: "Reply in JSON." }] }],
-      text: { format: { type: "json_object" } },
+      instructions: system,
+      input: [{ role: "user", content }],
+      text: { format: zodTextFormat(schema as z.ZodTypeAny, "answer") },
       max_output_tokens: maxTokens + REASONING_HEADROOM,
     });
     if (res.status === "incomplete") throw new Error(`LLM response incomplete: ${res.incomplete_details?.reason ?? "unknown"}`);
+    const refusal = res.output.flatMap((o) => (o.type === "message" ? o.content : [])).find((c) => c.type === "refusal");
+    if (refusal && refusal.type === "refusal") throw new Error(`LLM refused: ${refusal.refusal}`);
     return res.output_text;
   }
 
   private async parseWithRetry<T>(model: string, system: string, content: Input, schema: z.ZodType<T>, maxTokens: number): Promise<T> {
-    let text = await this.call(model, system, content, maxTokens);
+    let text = await this.call(model, system, content, schema, maxTokens);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         return schema.parse(extractJson(text));
       } catch (e) {
         if (attempt === 1) throw e;
         const fix = `Your previous output failed validation: ${(e as Error).message}. Return corrected JSON only.`;
-        text = await this.call(model, system, [...content, { type: "input_text", text: fix }], maxTokens);
+        text = await this.call(model, system, [...content, { type: "input_text", text: fix }], schema, maxTokens);
       }
     }
     throw new Error("unreachable");

@@ -13,9 +13,9 @@ import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
 import { domainReputation } from "../providers/search.js";
 
-const Queries = z.object({ queries: z.array(z.string()).min(3).max(6) });
+export const Queries = z.object({ queries: z.array(z.string()).min(3).max(6) });
 
-const Extracted = z.object({
+export const Extracted = z.object({
   claims: z.array(
     z.object({
       text: z.string(),
@@ -26,7 +26,7 @@ const Extracted = z.object({
   ),
 });
 
-const Merged = z.object({
+export const Merged = z.object({
   claims: z.array(
     z.object({
       id: Claim.shape.id,

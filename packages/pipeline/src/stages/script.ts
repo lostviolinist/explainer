@@ -11,7 +11,7 @@ import { ScenePlan, Scene, Beat, VisualType, type Brief, type ResearchBrief } fr
 import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
 
-const Arc = z.object({
+export const Arc = z.object({
   beats: z.array(
     z.object({
       beat: Beat,
@@ -22,7 +22,7 @@ const Arc = z.object({
   ),
 });
 
-const Scenes = z.object({
+export const Scenes = z.object({
   scenes: z.array(
     z.object({
       beat: Beat,
@@ -37,13 +37,13 @@ const Scenes = z.object({
   ).min(3, "write at least 3 scenes"),
 });
 
-const LearnerPass = z.object({
+export const LearnerPass = z.object({
   goalAnswer: z.string(),
   unclearSentences: z.array(z.string()),
   couldMeetGoal: z.boolean(),
 });
 
-const ExpertPass = z.object({
+export const ExpertPass = z.object({
   unsourced: z.array(z.string()),
   overstated: z.array(z.string()),
 });
