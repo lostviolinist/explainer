@@ -15,7 +15,7 @@ import { makeProgress } from "../context.js";
 
 export interface RenderProps {
   projectId: string;
-  background: "dark" | "light";
+  background: "dark" | "light" | "math";
   scenes: {
     id: string;
     narration: string;
@@ -42,7 +42,7 @@ export function buildRenderProps(brief: Brief, plan: ScenePlan, assets: SceneAss
   const byScene = new Map(assets.map((a) => [a.sceneId, a]));
   return {
     projectId: brief.projectId,
-    background: plan.background,
+    background: brief.style === "math" ? "math" : plan.background,
     learningGoal: brief.learningGoal,
     scenes: plan.scenes.map((s) => {
       const a = byScene.get(s.id);

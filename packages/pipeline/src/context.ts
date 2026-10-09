@@ -8,6 +8,7 @@ import { ExaSearch, type Search } from "./providers/search.js";
 import { FallbackAligner, HttpAligner, type Aligner } from "./providers/alignment.js";
 import type { ArtifactStore } from "./providers/store.js";
 import type { FrameSampler } from "./providers/frames.js";
+import { HttpAnimator, type Animator } from "./providers/animator.js";
 
 export interface HouseStyle {
   name: string;
@@ -41,6 +42,7 @@ export interface Ctx {
   mirror: AssetMirror;
   aligner: Aligner;
   frames: FrameSampler;
+  animator: Animator;
   store: ArtifactStore;
   style: HouseStyle;
   now(): string;
@@ -81,6 +83,7 @@ export function ctxFromEnv(store: ArtifactStore, frames: FrameSampler): Ctx {
     }),
     aligner: new FallbackAligner(env.ALIGNMENT_URL ? new HttpAligner(env.ALIGNMENT_URL) : null),
     frames,
+    animator: new HttpAnimator({ manim: env.MANIM_URL || undefined, three: env.THREE_URL || undefined }),
     store,
     style: loadHouseStyle(),
     now: () => new Date().toISOString(),

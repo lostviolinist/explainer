@@ -1,5 +1,5 @@
 import { AbsoluteFill, Freeze, Img, OffthreadVideo, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { FPS, PALETTE, cueFrame } from "./props.js";
+import { FPS, PALETTE, accentsFor, cueFrame } from "./props.js";
 import type { ExplainerProps } from "./props.js";
 
 type Scene = ExplainerProps["scenes"][number];
@@ -31,7 +31,14 @@ export function Visual({ scene }: { scene: Scene }) {
   const frame = useCurrentFrame();
   const clip = scene.visuals.find((v) => v.role === "clip");
   const still = scene.visuals.find((v) => v.role === "still" || v.role === "background");
+  const animation = scene.visuals.find((v) => v.role === "animation");
 
+  if (animation) {
+    // Manim / three.js renders are timed to the narration and frame their own shots: play once, hold the end.
+    const video = <OffthreadVideo src={animation.asset.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />;
+    const n = animation.asset.durationMs ? Math.floor((animation.asset.durationMs / 1000) * FPS) - 1 : null;
+    return <AbsoluteFill>{n !== null && frame >= n ? <Freeze frame={n - 1}>{video}</Freeze> : video}</AbsoluteFill>;
+  }
   if (clip) {
     // Clips are 5–8 s and narration runs 20–40 s: after the first pass, bounce instead of freezing.
     const video = <OffthreadVideo src={clip.asset.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />;
@@ -49,10 +56,11 @@ export function Visual({ scene }: { scene: Scene }) {
 }
 
 /** Programmatic layer driven by the anim spec and word timestamps. */
-export function Programmatic({ scene, background }: { scene: Scene; background: "dark" | "light" }) {
+export function Programmatic({ scene, background }: { scene: Scene; background: ExplainerProps["background"] }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const pal = PALETTE[background];
+  const accents = accentsFor(background);
   const spec = scene.animSpec;
 
   if (spec.kind === "labelled-diagram") {
@@ -71,7 +79,7 @@ export function Programmatic({ scene, background }: { scene: Scene; background: 
                 top: 140 + i * 84,
                 padding: "10px 22px",
                 borderRadius: 12,
-                background: PALETTE.accents[i % PALETTE.accents.length],
+                background: accents[i % accents.length],
                 color: "#1B2235",
                 fontSize: 34,
                 fontWeight: 500,
@@ -108,11 +116,11 @@ export function Programmatic({ scene, background }: { scene: Scene; background: 
     const max = Math.max(...spec.series.map((x) => x.value), 1);
     const grow = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 45 });
     return (
-      <AbsoluteFill style={{ padding: "160px 200px", display: "flex", flexDirection: "row", alignItems: "flex-end", gap: 48, fontFamily: "Inter, system-ui, sans-serif" }}>
+      <AbsoluteFill style={{ padding: "160px 200px 300px", display: "flex", flexDirection: "row", alignItems: "flex-end", gap: 48, fontFamily: "Inter, system-ui, sans-serif" }}>
         {spec.series.map((x, i) => (
           <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
             <div style={{ color: pal.ink, fontSize: 40, fontWeight: 600 }}>{x.value}</div>
-            <div style={{ width: "100%", height: (x.value / max) * 520 * grow, background: PALETTE.accents[i % PALETTE.accents.length], borderRadius: 12 }} />
+            <div style={{ width: "100%", height: (x.value / max) * 520 * grow, background: accents[i % accents.length], borderRadius: 12 }} />
             <div style={{ color: pal.muted, fontSize: 30 }}>{x.label}</div>
           </div>
         ))}

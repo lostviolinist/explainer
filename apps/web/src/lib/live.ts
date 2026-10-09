@@ -18,7 +18,7 @@ export type LiveScene = {
 };
 
 export type LiveState = {
-  brief: { learningGoal: string; level: string; tone: string; lengthS: number | null } | null;
+  brief: { learningGoal: string; level: string; tone: string; lengthS: number | null; style: string } | null;
   sources: { url: string; title: string; domain: string }[];
   facts: { text: string; domain?: string }[];
   quiz: { statement: string; answer: "myth" | "fact"; explanation: string }[];
@@ -54,7 +54,7 @@ export async function getLiveState(projectId: string): Promise<LiveState> {
 
   const byScene = new Map(assets.map((a) => [a.sceneId, a]));
   return {
-    brief: brief ? { learningGoal: brief.learningGoal, level: brief.level, tone: brief.tone, lengthS: brief.lengthS } : null,
+    brief: brief ? { learningGoal: brief.learningGoal, level: brief.level, tone: brief.tone, lengthS: brief.lengthS, style: brief.style ?? "illustrated" } : null,
     sources: (research?.sources ?? []).map((s) => ({ url: s.url, title: s.title, domain: s.domain })),
     facts: ranked.slice(0, 12).map((c) => ({ text: c.text, domain: domainOf(c.sources[0]?.url) })),
     quiz,
@@ -66,7 +66,7 @@ export async function getLiveState(projectId: string): Promise<LiveState> {
         narration: s.narration,
         visualType: s.visualType,
         stillUrl: a?.visuals.find((v) => v.role === "still" || v.role === "background")?.asset.url,
-        clipUrl: a?.visuals.find((v) => v.role === "clip")?.asset.url,
+        clipUrl: a?.visuals.find((v) => v.role === "clip" || v.role === "animation")?.asset.url,
         audioUrl: a?.audio.asset.url,
         done: Boolean(a),
       };

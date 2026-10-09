@@ -3,7 +3,7 @@
  * Length is left null; the research stage sets it from the needed-claim count.
  */
 import { z } from "zod";
-import { Brief, Level, Tone, Background } from "@explainer/schemas";
+import { Brief, Level, Tone, Background, type VideoStyle } from "@explainer/schemas";
 import type { Ctx } from "../context.js";
 
 export const Inferred = z.object({
@@ -22,6 +22,8 @@ export interface IntakeInput {
   /** From the user's library: what level they've watched before, which reactions they pressed. */
   history?: { level?: z.infer<typeof Level>; pressedSimpler?: number; pressedDeeper?: number };
   derivedFrom?: Brief["derivedFrom"];
+  /** The viewer's pick on the home page. */
+  style?: VideoStyle;
 }
 
 const SYSTEM = `You turn a learner's question or topic into a brief for a short animated explainer video.
@@ -55,10 +57,14 @@ export async function intake(ctx: Ctx, input: IntakeInput): Promise<Brief> {
   if (input.derivedFrom?.reaction === "simpler") level = level === "deep" ? "basics" : "nothing";
   if (input.derivedFrom?.reaction === "deeper") level = level === "nothing" ? "basics" : "deep";
 
+  const style = input.style ?? "illustrated";
   const brief = Brief.parse({
     projectId: input.projectId,
     question: input.question,
     ...inferred,
+    // The 3Blue1Brown look is always dark.
+    background: style === "math" ? "dark" : inferred.background,
+    style,
     level,
     lengthS: null,
     wordBudget: null,

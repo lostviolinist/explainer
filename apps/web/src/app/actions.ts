@@ -5,19 +5,20 @@ import { randomBytes } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@explainer/pipeline";
+import { VideoStyle } from "@explainer/schemas";
 import { db, schema } from "@/lib/db";
 
 const { projects, progressEvents } = schema;
 const slug = () => randomBytes(6).toString("base64url");
 
-const Ask = z.object({ question: z.string().trim().min(3).max(500) });
+const Ask = z.object({ question: z.string().trim().min(3).max(500), style: VideoStyle.catch("illustrated") });
 
 /** The one user decision: what do you want to understand? */
 export async function ask(formData: FormData) {
-  const { question } = Ask.parse({ question: formData.get("question") });
-  const [project] = await db.insert(projects).values({ question, shareSlug: slug() }).returning({ id: projects.id });
+  const { question, style } = Ask.parse({ question: formData.get("question"), style: formData.get("style") });
+  const [project] = await db.insert(projects).values({ question, style, shareSlug: slug() }).returning({ id: projects.id });
   await db.insert(progressEvents).values({ projectId: project!.id, stage: "queued", message: "starting", fraction: 0 });
-  await inngest.send({ name: "project/created", data: { projectId: project!.id, question } });
+  await inngest.send({ name: "project/created", data: { projectId: project!.id, question, style } });
   redirect(`/p/${project!.id}`);
 }
 
@@ -40,7 +41,7 @@ export async function react(formData: FormData) {
   const question = r.reaction === "follow-up" ? `${r.followUp} (follow-up to: ${parent.question})` : parent.question;
   const [child] = await db
     .insert(projects)
-    .values({ question, parentId: parent.id, reaction: r.reaction, userId: parent.userId, shareSlug: slug() })
+    .values({ question, style: parent.style, parentId: parent.id, reaction: r.reaction, userId: parent.userId, shareSlug: slug() })
     .returning({ id: projects.id });
   await db.insert(progressEvents).values({ projectId: child!.id, stage: "queued", message: "starting", fraction: 0 });
 
@@ -57,6 +58,7 @@ export async function react(formData: FormData) {
         pressedDeeper: lineage.filter((x) => x.reaction === "deeper").length,
       },
       derivedFrom: { projectId: parent.id, reaction: r.reaction, followUpQuestion: r.followUp },
+      style: VideoStyle.catch("illustrated").parse(parent.style),
     },
   });
   redirect(`/p/${child!.id}`);

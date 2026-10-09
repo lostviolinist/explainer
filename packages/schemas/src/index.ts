@@ -41,8 +41,14 @@ export const VisualType = z.enum([
   "clip", // Hedra reference-driven video, new shot
   "reference-seq", // recurring character across scenes
   "presenter", // optional avatar
+  "manim", // AI-written Manim code, 3Blue1Brown style (rendered in the animator sandbox)
+  "three", // AI-written three.js (React Three Fiber) 3D scene (rendered in the animator sandbox)
 ]);
 export type VisualType = z.infer<typeof VisualType>;
+
+/** The look the viewer picked: Hedra illustration, or 3Blue1Brown-style math animation. */
+export const VideoStyle = z.enum(["illustrated", "math"]);
+export type VideoStyle = z.infer<typeof VideoStyle>;
 
 // ---------------------------------------------------------------------------
 // Stage 1 — Brief (inferred from the question; never shown for approval)
@@ -65,6 +71,8 @@ export const Brief = z.object({
   sceneRange: z.tuple([z.number().int(), z.number().int()]).nullable(),
   /** One-paragraph statement of intent, stored for QA, never shown. */
   statement: z.string(),
+  /** Chosen by the viewer; briefs saved before styles existed are illustrated. */
+  style: VideoStyle.default("illustrated"),
   /** Reactions that produced this brief, if any. */
   derivedFrom: z
     .object({
@@ -253,7 +261,7 @@ export const SceneAssets = z.object({
   visuals: z.array(
     z.object({
       asset: MirroredAsset,
-      role: z.enum(["background", "icon", "still", "clip", "presenter"]),
+      role: z.enum(["background", "icon", "still", "clip", "presenter", "animation"]),
     }),
   ),
   qa: z.array(QaResult),

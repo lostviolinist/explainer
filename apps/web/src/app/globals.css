@@ -70,6 +70,14 @@ button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none !importan
 .ask { display: flex; gap: 10px; padding: 8px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 20px; box-shadow: 0 20px 60px -30px rgba(139, 123, 255, 0.5); }
 .ask input { flex: 1; min-width: 0; font: inherit; font-size: 19px; padding: 14px 14px; border: 0; background: transparent; color: var(--ink); outline: none; }
 .ask input::placeholder { color: var(--faint); }
+.styles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-top: 12px; }
+.style-card { display: flex; align-items: center; gap: 12px; text-align: left; font: inherit; color: var(--ink); padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; transition: border-color .15s, background .15s; }
+.style-card:hover:not(:disabled) { border-color: var(--line-2); }
+.style-card.selected { border-color: transparent; background: linear-gradient(var(--bg), var(--bg)) padding-box, var(--grad) border-box; border: 1px solid transparent; }
+.style-card svg { flex: none; width: 56px; height: 38px; border-radius: 8px; }
+.style-card > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.style-card b { font-size: 15px; }
+.style-card .small { font-size: 13px; }
 .setup { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-height: 32px; }
 .setup .ok { color: var(--green); }
 .setup-problems { flex: 1 1 100%; padding: 16px 18px; border: 1px solid rgba(255, 107, 107, 0.35); border-radius: 14px; background: rgba(255, 107, 107, 0.06); }

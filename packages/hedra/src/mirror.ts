@@ -75,6 +75,13 @@ export class AssetMirror {
     }
   }
 
+  /** Store bytes we made ourselves (e.g. an animator render) next to the mirrored Hedra outputs. */
+  async put(projectId: string, name: string, bytes: Uint8Array, contentType: string, meta: { width?: number; height?: number; durationMs?: number } = {}): Promise<Mirrored> {
+    const key = `projects/${projectId}/${name}`;
+    await this.s3.send(new PutObjectCommand({ Bucket: this.opts.bucket, Key: key, Body: bytes, ContentType: contentType, CacheControl: "public, max-age=31536000, immutable" }));
+    return { hedraAssetId: `local:${name}`, url: this.publicUrl(key), contentType, width: meta.width ?? null, height: meta.height ?? null, durationMs: meta.durationMs ?? null, bytes: bytes.byteLength };
+  }
+
   /** Download a completed Hedra output and store it. Idempotent on asset id. */
   async mirror(projectId: string, out: OutputItem): Promise<Mirrored> {
     if (!out.asset_id || !out.url || !out.content_type) {

@@ -13,6 +13,24 @@ import { db } from "./db";
 
 export type Check = { name: string; status: "ok" | "warn" | "fail"; detail: string; fix?: string };
 
+/** Check names the home page reads to offer the 3Blue1Brown style. */
+export const MANIM_CHECK = "3Blue1Brown animator";
+export const THREE_CHECK = "3D animator";
+
+/** An animation sandbox is optional: missing or down is a warning, and the pipeline simply doesn't use it. */
+async function sandbox(envVar: string, without: string): Promise<string | { warn: string }> {
+  const url = process.env[envVar];
+  if (!url) return { warn: `not configured (${envVar}); ${without}` };
+  try {
+    const res = await fetch(`${url.replace(/\/$/, "")}/health`, { cache: "no-store", signal: AbortSignal.timeout(60_000) });
+    const body = (await res.json().catch(() => ({}))) as { manim?: string; error?: string };
+    if (!res.ok) return { warn: `unavailable: ${body.error ?? res.status}; ${without}` };
+    return body.manim ? `ready (${body.manim})` : "ready";
+  } catch (e) {
+    return { warn: `unreachable at ${url} (${(e as Error).message}); ${without}` };
+  }
+}
+
 /** A 32×32 solid-blue PNG for the vision check. */
 const PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nGNwav9KU8QwasGoBaMWjFowasGoBaMWjFowasGoBaMWDBULADnR+Fv1COpgAAAAAElFTkSuQmCC";
@@ -104,6 +122,9 @@ export async function runPreflight(): Promise<Check[]> {
       await ensureRenderBrowser();
       return "browser ready";
     }),
+
+    run(MANIM_CHECK, "Start the `manim` service: docker compose up --build.", () => sandbox("MANIM_URL", "the 3Blue1Brown style is off")),
+    run(THREE_CHECK, "Start the `three` service: docker compose up --build.", () => sandbox("THREE_URL", "videos won't use 3D scenes")),
   ]);
 }
 

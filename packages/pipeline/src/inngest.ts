@@ -3,11 +3,11 @@
  * its own retries. Scenes fan out in parallel for narration and visuals.
  *
  * Events:
- *   project/created        { projectId, question, history?, derivedFrom? }
+ *   project/created        { projectId, question, history?, derivedFrom?, style? }
  *   project/stage.failed   { projectId, stage, error }
  */
 import { Inngest, EventSchemas } from "inngest";
-import type { Brief } from "@explainer/schemas";
+import type { Brief, VideoStyle } from "@explainer/schemas";
 import type { Ctx } from "./context.js";
 import type { Renderer } from "./stages/assemble.js";
 import { intake } from "./stages/intake.js";
@@ -23,6 +23,7 @@ type Events = {
       question: string;
       history?: { level?: Brief["level"]; pressedSimpler?: number; pressedDeeper?: number };
       derivedFrom?: Brief["derivedFrom"];
+      style?: VideoStyle;
     };
   };
   "project/stage.failed": { data: { projectId: string; stage: string; error: string } };
@@ -45,9 +46,9 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
     { event: "project/created" },
     async ({ event, step }) => {
       const ctx = getCtx();
-      const { projectId, question, history, derivedFrom } = event.data;
+      const { projectId, question, history, derivedFrom, style } = event.data;
 
-      const brief0 = await step.run("intake", () => intake(ctx, { projectId, question, history, derivedFrom }));
+      const brief0 = await step.run("intake", () => intake(ctx, { projectId, question, history, derivedFrom, style }));
       const { brief, research: rb } = await step.run("research", () => research(ctx, brief0));
       const plan = await step.run("script", () => script(ctx, brief, rb));
 

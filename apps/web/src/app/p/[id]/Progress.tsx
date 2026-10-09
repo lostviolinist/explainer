@@ -48,6 +48,8 @@ const BEAT_LABEL: Record<string, string> = {
 };
 const LEVEL_LABEL: Record<string, string> = { nothing: "Beginner", basics: "Some background", deep: "Deep dive" };
 const PROGRAMMATIC = new Set(["chart", "text"]);
+/** Scenes whose animation is written as code (Manim / three.js): no still, just the render. */
+const CODED = new Set(["manim", "three"]);
 const MOVING = new Set(["still-animated", "clip", "reference-seq"]);
 
 /** Watch the video get made: stages, live storyboard, sources, facts and a quiz while you wait. */
@@ -137,7 +139,7 @@ export function Progress({ projectId, question, initial, initialLive }: { projec
     const [lo, hi] = SPAN[last?.stage ?? "queued"] ?? [0, 1];
     let within = last?.fraction ?? 0;
     if (stage === "visuals" && view.scenes.length) {
-      const per = view.scenes.map((s) => (s.done ? 1 : (s.audioUrl ? 0.15 : 0) + (s.stillUrl || PROGRAMMATIC.has(s.visualType) ? 0.45 : 0) + (s.clipUrl ? 0.4 : 0)));
+      const per = view.scenes.map((s) => (s.done ? 1 : CODED.has(s.visualType) ? (s.audioUrl ? 0.15 : 0) + (s.clipUrl ? 0.85 : 0) : (s.audioUrl ? 0.15 : 0) + (s.stillUrl || PROGRAMMATIC.has(s.visualType) ? 0.45 : 0) + (s.clipUrl ? 0.4 : 0)));
       within = per.reduce((a, b) => a + b, 0) / per.length;
     }
     if (stage === "assemble" && last?.message === "rendering" && now) {
@@ -249,6 +251,7 @@ function GoalCard({ brief }: { brief: NonNullable<LiveState["brief"]> }) {
       <div className="eyebrow">By the end you'll be able to</div>
       <p>{goal.charAt(0).toUpperCase() + goal.slice(1)}</p>
       <div className="chips">
+        {brief.style === "math" && <span className="chip">3Blue1Brown style</span>}
         <span className="chip">{LEVEL_LABEL[brief.level] ?? brief.level}</span>
         <span className="chip">{brief.tone.charAt(0).toUpperCase() + brief.tone.slice(1)}</span>
         {brief.lengthS && <span className="chip">~{Math.round(brief.lengthS / 60)} min video</span>}
@@ -348,6 +351,7 @@ function MythQuiz({ items }: { items: LiveState["quiz"] }) {
 function sceneStatus(s: LiveScene): { label: string; tone: "wait" | "work" | "ready" } {
   if (s.done) return { label: "Ready", tone: "ready" };
   if (PROGRAMMATIC.has(s.visualType)) return s.audioUrl ? { label: "Built in the edit", tone: "ready" } : { label: "Recording voice", tone: "work" };
+  if (CODED.has(s.visualType)) return s.clipUrl ? { label: "Ready", tone: "ready" } : { label: s.audioUrl ? (s.visualType === "three" ? "Building 3D scene" : "Writing animation") : "Recording voice", tone: "work" };
   if (!s.stillUrl) return { label: s.audioUrl ? "Drawing" : "Recording voice", tone: "work" };
   if (MOVING.has(s.visualType) && !s.clipUrl) return { label: "Animating", tone: "work" };
   return { label: "Checking", tone: "work" };

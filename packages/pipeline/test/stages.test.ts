@@ -7,9 +7,12 @@ import { intake } from "../src/stages/intake.ts";
 import { script, estimateVideoS, trimToFit } from "../src/stages/script.ts";
 import { research as runResearch } from "../src/stages/research.ts";
 import { pacingCheck } from "../src/stages/assemble.ts";
-import { renderSceneAssets } from "../src/stages/visuals.ts";
+import { renderSceneAssets, planScene } from "../src/stages/visuals.ts";
+import { visualTypesFor, fitVisualType } from "../src/stages/script.ts";
+import type { Animator, Engine } from "../src/providers/animator.ts";
 import { evenSplit, rescale } from "../src/providers/alignment.ts";
 import type { LLM } from "../src/providers/llm.ts";
+import { noAnimator } from "../src/providers/animator.ts";
 import type { Brief, ResearchBrief, Scene, ScenePlan, SceneAssets } from "@explainer/schemas";
 
 const PID = "11111111-1111-4111-8111-111111111111";
@@ -40,6 +43,7 @@ function ctxWith(llm: LLM): Ctx {
     mirror: {} as any,
     aligner: { align: async (_u: string, t: string) => ({ words: evenSplit(t, 1), exact: false }) },
     frames: { sample: async () => [] },
+    animator: noAnimator,
     store: new MemoryStore(),
     style: loadHouseStyle(),
     now: () => "2026-10-07T20:00:00.000Z",
@@ -91,7 +95,7 @@ test("script passes learner and expert review on the first attempt and records i
     [/careful subject expert/, { unsourced: [], overstated: [] }],
   ]);
   const ctx = ctxWith(llm);
-  const brief = { projectId: PID, question: "q", topic: "t", learningGoal: "After watching, the viewer can explain it", level: "basics" as const, ageMode: null, tone: "neutral" as const, background: "light" as const, lengthS: 120, wordBudget: 330, sceneRange: [3, 6] as [number, number], statement: "s", derivedFrom: null };
+  const brief = { projectId: PID, question: "q", topic: "t", learningGoal: "After watching, the viewer can explain it", level: "basics" as const, ageMode: null, tone: "neutral" as const, background: "light" as const, lengthS: 120, wordBudget: 330, sceneRange: [3, 6] as [number, number], statement: "s", style: "illustrated" as const, derivedFrom: null };
   const plan = await script(ctx, brief, research);
   assert.equal(plan.scenes.length, 3);
   assert.equal(plan.scenes[0]!.id, "s1");
@@ -154,7 +158,7 @@ test("clip QA scores frames sampled from the clip, not the video file", async ()
   const brief: Brief = {
     projectId: PID, question: "why is the sky blue?", topic: "sky colour", learningGoal: "explain scattering",
     level: "basics", ageMode: null, tone: "neutral", background: "light", lengthS: 90, wordBudget: 250,
-    sceneRange: [3, 5], statement: "s", derivedFrom: null,
+    sceneRange: [3, 5], statement: "s", style: "illustrated" as const, derivedFrom: null,
   };
   const scene: Scene = {
     id: "s1", beat: "hook", purpose: "p", narration: "Sunlight scatters off air.", claimIds: [],
@@ -182,7 +186,7 @@ test("clip QA scores frames sampled from the clip, not the video file", async ()
 // 3-minute cap
 
 const BEATS7 = ["hook", "ground", "misconception", "build-up", "core", "payoff", "recap"] as const;
-const briefFor = (lengthS: number) => ({ projectId: PID, question: "q", topic: "t", learningGoal: "After watching, the viewer can explain it", level: "deep" as const, ageMode: null, tone: "neutral" as const, background: "light" as const, lengthS, wordBudget: Math.round((lengthS / 60) * 165), sceneRange: [4, 9] as [number, number], statement: "s", derivedFrom: null });
+const briefFor = (lengthS: number) => ({ projectId: PID, question: "q", topic: "t", learningGoal: "After watching, the viewer can explain it", level: "deep" as const, ageMode: null, tone: "neutral" as const, background: "light" as const, lengthS, wordBudget: Math.round((lengthS / 60) * 165), sceneRange: [4, 9] as [number, number], statement: "s", style: "illustrated" as const, derivedFrom: null });
 const sceneWith = (beat: string, sentences: number) => ({
   beat, purpose: "p", claimIds: ["c1"], visualDirection: "a leaf as a stage, a spotlight, an orange set", visualType: "still-animated", targetS: 25, onScreenTerms: [],
   narration: Array.from({ length: sentences }, (_, i) => `Sentence ${i + 1} about the ${beat} has ten words in it.`).join(" "),
@@ -247,4 +251,90 @@ test("trimToFit drops whole middle scenes only when sentences run out, and keeps
   assert.equal(out.length, 3);
   assert.equal(out[0]!.beat, "hook");
   assert.equal(out.at(-1)!.beat, "recap");
+});
+
+// ---------------------------------------------------------------------------
+// Code scenes (Manim / three.js) and styles
+
+function codeCtx(opts: { render: (engine: Engine, code: string, durationS: number) => { ok: true } | { ok: false; error: string }; vision?: (n: number) => number }) {
+  const prompts: { system: string; user: string }[] = [];
+  const renders: { engine: Engine; code: string; durationS: number; background: string }[] = [];
+  let visionCalls = 0;
+  const llm: LLM = {
+    async json<T>(a: { system: string; user: string; schema: z.ZodType<T> }) {
+      prompts.push({ system: a.system, user: a.user });
+      return a.schema.parse({ code: `class GeneratedScene(Scene):\n    # attempt ${prompts.length}\n    def construct(self): pass` });
+    },
+    async vision<T>(a: { schema: z.ZodType<T> }) {
+      const q = opts.vision?.(++visionCalls) ?? 0.9;
+      return a.schema.parse({ matchesDirection: q, styleMatch: q, hasText: true, notes: q < 0.7 ? "the equation runs off the right edge" : "ok" });
+    },
+  };
+  const ctx = ctxWith(llm);
+  ctx.animator = {
+    available: async () => ["manim", "three"],
+    render: async (engine, code, durationS, background) => {
+      renders.push({ engine, code, durationS, background });
+      const r = opts.render(engine, code, durationS);
+      return r.ok ? { ok: true, video: new Uint8Array([1, 2, 3]) } : r;
+    },
+  } satisfies Animator;
+  ctx.mirror = { put: async (_p: string, name: string, bytes: Uint8Array, contentType: string, meta: any) => ({ hedraAssetId: `local:${name}`, url: `http://localhost:9000/explainer-assets/${name}`, contentType, width: 1920, height: 1080, durationMs: meta.durationMs, bytes: bytes.length }) } as any;
+  ctx.frames = { sample: async () => ["data:image/jpeg;base64,AAA", "data:image/jpeg;base64,AAA", "data:image/jpeg;base64,AAA"] };
+  return { ctx, prompts, renders };
+}
+
+const mathBrief = { ...briefFor(180), style: "math" as const, background: "dark" as const };
+const codeScene = (visualType: "manim" | "three"): Scene => ({
+  id: "s2", beat: "core", purpose: "show the 1/λ⁴ law", narration: "Short waves scatter far more. Blue scatters about five times more than red.",
+  claimIds: ["c1"], visualDirection: "the curve 1/λ⁴ drawn on axes, blue end highlighted", visualType, targetS: 10, onScreenTerms: ["wavelength"], render: null,
+});
+const codeAudio: SceneAssets["audio"] = {
+  asset: { hedraAssetId: "a", url: "http://localhost:9000/explainer-assets/a.mp3", contentType: "audio/mpeg", width: null, height: null, durationMs: 6000, model: "m", costUsd: 0 },
+  durationS: 6,
+  words: evenSplit("Short waves scatter far more. Blue scatters about five times more than red.", 6),
+};
+
+test("a Manim scene whose code fails is sent back with the code and the error, then renders", async () => {
+  const { ctx, prompts, renders } = codeCtx({ render: (_e, code) => (code.includes("attempt 1") ? { ok: false, error: "NameError: name 'Creat' is not defined" } : { ok: true }) });
+  const out = await renderSceneAssets(ctx, mathBrief, {} as ScenePlan, { ...codeScene("manim"), render: await planScene(ctx, mathBrief, codeScene("manim")) }, codeAudio);
+  assert.equal(renders.length, 2);
+  assert.equal(renders[0]!.durationS, 6.6, "narration + scene pause");
+  assert.equal(renders[0]!.background, "#000000");
+  assert.match(prompts[0]!.system, /class GeneratedScene\(Scene\)/);
+  assert.match(prompts[0]!.user, /\[0\.0 s\] Short waves scatter far more\.\n\[\d\.\d s\] Blue scatters/);
+  assert.match(prompts[1]!.user, /YOUR PREVIOUS CODE FAILED[\s\S]*attempt 1[\s\S]*NameError: name 'Creat'/);
+  assert.deepEqual(out.visuals.map((v) => v.role), ["animation"]);
+  assert.equal(out.visuals[0]!.asset.durationMs, 6600);
+  assert.equal((ctx.store as MemoryStore).events.at(-1)?.preview?.clipUrl, out.visuals[0]!.asset.url);
+});
+
+test("reviewer notes on a rendered scene are fed back, and the best render is kept", async () => {
+  const { ctx, prompts } = codeCtx({ render: () => ({ ok: true }), vision: (n) => (n === 1 ? 0.5 : 0.9) });
+  const out = await renderSceneAssets(ctx, mathBrief, {} as ScenePlan, codeScene("manim"), codeAudio);
+  assert.match(prompts[1]!.user, /a reviewer looking at frames said: the equation runs off the right edge/);
+  assert.match(out.visuals[0]!.asset.url, /s2-manim-2\.mp4$/);
+});
+
+test("in the math style a 3D scene that never works becomes Manim; Manim that never works uses the safe scene", async () => {
+  const { ctx, renders } = codeCtx({ render: (engine, code) => (engine === "manim" && code.includes("Write(title)") ? { ok: true } : { ok: false, error: "boom" }) });
+  const out = await renderSceneAssets(ctx, mathBrief, {} as ScenePlan, codeScene("three"), codeAudio);
+  assert.deepEqual(renders.map((r) => r.engine), ["three", "three", "three", "manim", "manim", "manim", "manim"]);
+  assert.match(renders.at(-1)!.code, /Short waves scatter far more\./, "safe scene shows the key line");
+  assert.deepEqual(out.visuals.map((v) => v.role), ["animation"]);
+  assert.ok(out.qa.some((q) => q.fallback === "demoted three → manim"));
+  assert.ok(out.qa.some((q) => q.fallback === "safe Manim scene"));
+});
+
+test("styles offer their own scene types, limited to running engines", () => {
+  assert.deepEqual(visualTypesFor("math", ["manim", "three"]), ["manim", "three", "chart", "text"]);
+  assert.deepEqual(visualTypesFor("math", ["manim"]), ["manim", "chart", "text"]);
+  assert.ok(visualTypesFor("illustrated", ["manim", "three"]).includes("three"));
+  assert.ok(!visualTypesFor("illustrated", ["manim", "three"]).includes("manim"));
+  assert.ok(!visualTypesFor("illustrated", []).includes("three"));
+  assert.equal(fitVisualType("diagram", visualTypesFor("math", ["manim"])), "manim");
+  assert.equal(fitVisualType("chart", visualTypesFor("math", ["manim"])), "chart");
+  assert.equal(fitVisualType("three", visualTypesFor("illustrated", [])), "still-animated");
+  assert.equal(fitVisualType("manim", visualTypesFor("illustrated", ["three"])), "diagram");
+  assert.equal(fitVisualType("presenter", visualTypesFor("illustrated", [])), "still-animated");
 });

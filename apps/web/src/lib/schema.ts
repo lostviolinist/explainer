@@ -13,6 +13,7 @@ export const projects = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id").references(() => users.id),
     question: text("question").notNull(),
+    style: text("style").notNull().default("illustrated"), // illustrated | math
     stage: text("stage").notNull().default("queued"),
     parentId: uuid("parent_id"),
     reaction: text("reaction"), // simpler | deeper | follow-up

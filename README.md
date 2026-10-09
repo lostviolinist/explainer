@@ -26,9 +26,20 @@ docker compose up --build
 
 App: http://localhost:3000 · Inngest runs (step-by-step logs and errors): http://localhost:8288. Database and storage settings in `.env` are ignored here; the compose file points them at its own services. `docker compose down -v` wipes the data.
 
+## Video styles and animation sandboxes
+
+The home page offers two styles:
+
+- **Illustrated**: Hedra stills and clips in the house style, plus 3D scenes where a 3D view explains better.
+- **3Blue1Brown**: scenes written as [Manim](https://www.manim.community/) code (equations, graphs, geometry), plus 3D scenes. No Hedra images or video, only narration, so it costs a fraction of an illustrated video.
+
+Manim and 3D scenes are code the model writes per scene, timed to the narration. Two sandbox services render it: `animator/manim` (the official Manim image plus a small render server) and `three` (React Three Fiber code rendered with Remotion; `packages/render/src/animator/three-server.ts`). Render errors and reviewer notes on sampled frames go back to the model for up to three attempts. After that, a Manim scene falls back to a plain safe scene, and a 3D scene falls back to an illustration (or to Manim in the 3Blue1Brown style).
+
+The sandboxes run model-written code, so in the compose file they get no keys, no `.env`, and only the internal `sandbox` network (no internet), with memory, CPU and process limits. When hosting, deploy them privately (not exposed to the internet) and point `MANIM_URL` / `THREE_URL` at them. Both are optional: if one is missing, the setup check shows a warning and the pipeline doesn't use it. Manim's rules for the model distil [adithya-s-k/manim_skill](https://github.com/adithya-s-k/manim_skill) (MIT).
+
 ## Smoke test without paid APIs
 
-`pnpm --filter @explainer/web smoke` runs the whole pipeline — every stage, the Postgres store, the S3 mirror, frame sampling and a real Remotion render — with fake OpenAI, Exa and Hedra. The fake Hedra rejects any request that breaks a model's published input schema. It needs the database and bucket from `.env` (the Docker stack works: `docker compose exec web pnpm --filter @explainer/web smoke`) and prints `SMOKE OK` with the rendered video's URL. To watch the progress page fill in, slow it down and keep the project: `SMOKE_DELAY_MS=3000 SMOKE_KEEP=1`, then open the `/p/<project id>` it prints (`SMOKE_STILLS=a.png,b.png` uses real images as the fake stills).
+`pnpm --filter @explainer/web smoke` runs the whole pipeline in both styles (the 3Blue1Brown run needs `MANIM_URL`; 3D scenes need `THREE_URL`) — every stage, the Postgres store, the S3 mirror, frame sampling and a real Remotion render — with fake OpenAI, Exa and Hedra. The fake Hedra rejects any request that breaks a model's published input schema. It needs the database and bucket from `.env` (the Docker stack works: `docker compose exec web pnpm --filter @explainer/web smoke`) and prints `SMOKE OK` with the rendered video's URL. To watch the progress page fill in, slow it down and keep the project: `SMOKE_DELAY_MS=3000 SMOKE_KEEP=1`, then open the `/p/<project id>` it prints (`SMOKE_STILLS=a.png,b.png` uses real images as the fake stills).
 
 ## Running locally
 
@@ -64,6 +75,8 @@ Every Hedra call carries an idempotency key from a hash of its input, so retries
 | Narrator: David O. on `elevenlabs-multilingual-v2` at 1.1× | `config/house-style.json` → `voice` |
 | Models per visual type (`kling-25-turbo` stills-in-motion, `wan-3-0` clips, `minimax-h3` retry) | `config/house-style.json` → `models` |
 | Scene budget: ~165 wpm, 20–40 s scenes | `packages/schemas/src/index.ts` → `sceneBudget` |
+| Video styles and which scene types each offers | `packages/pipeline/src/stages/script.ts` → `visualTypesFor` |
+| Rules for model-written Manim / three.js code | `packages/pipeline/src/stages/engines.ts` |
 | Length cap: 3 min (`MAX_VIDEO_SECONDS`); over-long scripts are rewritten, then trimmed, before any media is made | `packages/pipeline/src/stages/script.ts` → `estimateVideoS`, `trimToFit` |
 | QA pass thresholds and demotion ladder | `packages/pipeline/src/stages/visuals.ts` |
 

@@ -1,15 +1,20 @@
-# Local stack: Postgres, SeaweedFS (S3), Inngest dev server, and the web app.
+# Local stack: Postgres, SeaweedFS (S3), Inngest dev server, the web app, and two
+# animation sandboxes (Manim and three.js) that run AI-written scene code.
 #   cp .env.example .env   # add HEDRA_API_KEY, OPENAI_API_KEY, EXA_API_KEY
 #   docker compose up --build
 # App: http://localhost:3000   Inngest runs: http://localhost:8288
 #
 # The S3 server shares the web container's network so that http://localhost:9000 means the same
 # bucket to your browser (playing videos) and to the renderer inside the container.
+#
+# The sandboxes get no keys, no .env, and only the internal `sandbox` network (no internet).
 
 services:
   web:
     build: .
+    image: explainer-app:local
     ports: ["3000:3000", "9000:9000"]
+    networks: [default, sandbox]
     env_file:
       - path: .env
         required: false
@@ -25,6 +30,8 @@ services:
       INNGEST_BASE_URL: http://inngest:8288
       RENDER_TARGET: local
       NEXT_PUBLIC_APP_URL: http://localhost:3000
+      MANIM_URL: http://manim:8001
+      THREE_URL: http://three:8002
     depends_on:
       postgres: { condition: service_healthy }
 
@@ -53,6 +60,25 @@ services:
     entrypoint: >
       sh -c "until curl -sf -X PUT http://localhost:9000/explainer-assets; do sleep 2; done; echo bucket ready"
 
+  # 3Blue1Brown-style scenes: the official Manim image (Manim, LaTeX, ffmpeg) + a render server.
+  manim:
+    build: ./animator/manim
+    networks: [sandbox]
+    mem_limit: 3g
+    cpus: 2
+    pids_limit: 512
+
+  # 3D scenes: React Three Fiber code rendered with Remotion, from the app image without its secrets.
+  three:
+    build: .
+    image: explainer-app:local
+    working_dir: /app/apps/web
+    command: ["node", "--import", "tsx", "/app/packages/render/src/animator/three-server.ts"]
+    networks: [sandbox]
+    mem_limit: 3g
+    cpus: 2
+    pids_limit: 512
+
   inngest:
     image: inngest/inngest
     command: inngest dev -u http://web:3000/api/inngest
@@ -62,3 +88,7 @@ services:
 volumes:
   pgdata:
   s3data:
+
+networks:
+  sandbox:
+    internal: true

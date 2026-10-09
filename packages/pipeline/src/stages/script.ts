@@ -86,6 +86,31 @@ export function trimToFit(scenes: Scene[], limitS: number, wordsPerMinute: numbe
   return out.map((s, i) => ({ ...s, id: `s${i + 1}` }));
 }
 
+const TYPE_DESCRIPTIONS: Record<string, string> = {
+  diagram: "diagram (systems, labelled parts)",
+  chart: "chart (numbers from a claim)",
+  text: "text (key terms, recap)",
+  "still-animated": 'still-animated (metaphors, "imagine a…", historical scenes)',
+  clip: "clip (establishing shots, nature, demonstrations)",
+  "reference-seq": "reference-seq (a recurring character)",
+  manim: "manim (the 3Blue1Brown look: equations, graphs, geometry, arrows, step-by-step derivations; the default in this style)",
+  three: "three (a 3D animated model: orbits, molecules, light paths, anything spatial that reads better in 3D)",
+};
+
+/** Scene types on offer: by style, and only the animation engines that are running. */
+export function visualTypesFor(style: Brief["style"], engines: string[]): Scene["visualType"][] {
+  const three = engines.includes("three") ? (["three"] as const) : [];
+  if (style === "math" && engines.includes("manim")) return ["manim", ...three, "chart", "text"];
+  return ["diagram", "chart", "text", "still-animated", "clip", "reference-seq", ...three];
+}
+
+/** Off-menu choices map to the closest type on offer. */
+export function fitVisualType(t: Scene["visualType"], offered: Scene["visualType"][]): Scene["visualType"] {
+  if (offered.includes(t)) return t;
+  if (offered.includes("manim")) return t === "chart" || t === "text" ? t : "manim";
+  return t === "manim" ? "diagram" : "still-animated";
+}
+
 const LEVEL_WORDS: Record<Brief["level"], string> = {
   nothing: "someone with no background at all; every term is introduced before it is used",
   basics: "someone who knows the everyday basics; technical terms are fine once defined",
@@ -103,6 +128,7 @@ export async function script(ctx: Ctx, brief: Brief, research: ResearchBrief): P
   const wordLimit = Math.floor(((limitS - VIDEO_TIMING.endCardS - maxScenes * VIDEO_TIMING.sceneTailS) / 60) * wpm);
   const wordBudget = Math.min(brief.wordBudget ?? wordLimit, wordLimit);
   const condensed = lengthFromClaims(research.neededClaimCount) > lengthS;
+  const offered = visualTypesFor(brief.style, await ctx.animator.available());
 
   const usable = research.claims.filter((c) => c.confidence !== "contested" || c.type === "history");
   const claimList = usable.map((c) => `${c.id} (${c.type}, ${c.fit}, ${c.confidence}): ${c.text}`).join("\n");
@@ -136,7 +162,7 @@ Beat durations sum to ${lengthS} s; the whole video must not exceed ${clock(maxS
 Each scene has three tracks:
 - narration: what is said. Short sentences. Every sentence maps to a claim id in claimIds. Introduce a term before using it. The hook is a question or a surprising fact; the recap restates the goal in one breath.
 - visualDirection: what is seen. It MUST name the scene's metaphor and at least two supporting details, never only the objects (good: "an eye as the observer, a dotted ring for the horizon, ghost stars where the light seems to come from"; bad: "a black hole and a star").
-- visualType: diagram (systems, labelled parts), chart (numbers from a claim), text (key terms, recap), still-animated (metaphors, "imagine a…", historical scenes), clip (establishing shots, nature, demonstrations), reference-seq (a recurring character), presenter (never in v1).
+- visualType, one of: ${offered.map((t) => TYPE_DESCRIPTIONS[t]).join("; ")}.
 Rules: one idea per scene; name a thing before showing its label; a misconception is stated, then corrected; the recap uses the exact words of the learning goal.
 onScreenTerms: words that will appear as labels; must appear in the narration.
 Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.${lengthNote ? `\nLENGTH: ${lengthNote}` : ""}`,
@@ -149,8 +175,8 @@ Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.${lengthNote ? `\nLEN
       Scene.parse({
         ...s,
         id: `s${i + 1}`,
-        // Presenter scenes aren't built in v1; Scene allows 5–45 s.
-        visualType: s.visualType === "presenter" ? "still-animated" : s.visualType,
+        // Only types on offer for this style and the running engines; Scene allows 5–45 s.
+        visualType: fitVisualType(s.visualType, offered),
         targetS: Math.min(45, Math.max(5, s.targetS)),
         render: null,
       }),

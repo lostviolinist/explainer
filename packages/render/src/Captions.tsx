@@ -14,7 +14,7 @@ export function Captions({
 }: {
   words: ExplainerProps["scenes"][number]["words"];
   narration: string;
-  background: "dark" | "light";
+  background: ExplainerProps["background"];
 }) {
   const frame = useCurrentFrame();
   const t = frame / FPS;

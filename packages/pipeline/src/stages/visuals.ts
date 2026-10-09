@@ -7,14 +7,20 @@
  *                    programmatic assets) → vision check → retry on next model
  *                    → demote to a safer visual type.
  *
+ * Code scenes (manim / three): the model writes Manim or React Three Fiber code,
+ * the animator sandbox renders it, sampled frames are checked, and failures
+ * (render errors or reviewer notes) are fed back for up to three attempts.
+ *
  * All generated assets are mirrored; both the Hedra asset id and our URL are kept.
  */
 import { z } from "zod";
-import { AnimSpec, RenderSpec, SceneAssets, QaResult, type Scene, type ScenePlan, type Brief, type MirroredAsset } from "@explainer/schemas";
+import { AnimSpec, RenderSpec, SceneAssets, QaResult, VIDEO_TIMING, type Scene, type ScenePlan, type Brief, type MirroredAsset } from "@explainer/schemas";
 import { generateStill, animateStill, generateClip, generateSpeech, HedraError, type GenOutcome } from "@explainer/hedra";
 import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
 import { rescale } from "../providers/alignment.js";
+import type { Engine } from "../providers/animator.js";
+import { MANIM_RULES, threeRules, narrationTimeline, stripFences, fallbackManim } from "./engines.js";
 
 export const Planned = z.object({
   hedraPrompt: z.string().nullable(),
@@ -37,7 +43,16 @@ const DEMOTE: Partial<Record<Scene["visualType"], Scene["visualType"]>> = {
   "still-animated": "diagram",
 };
 
+/** What the model returns for a code scene. */
+export const SceneCode = z.object({ code: z.string() });
+
+const isCodeScene = (t: Scene["visualType"]): t is Engine => t === "manim" || t === "three";
+
 export async function planScene(ctx: Ctx, brief: Brief, scene: Scene): Promise<RenderSpec> {
+  // Code scenes are written later, once the narration's timing is known.
+  if (isCodeScene(scene.visualType)) {
+    return RenderSpec.parse({ hedraPrompt: null, model: scene.visualType, referenceAssetIds: [], storyboardAssetId: null, animSpec: { kind: "none" } });
+  }
   const refs = [ctx.style.referenceFrames[brief.background].assetId];
   const planned = await ctx.llm.json({
     system: `You write generation prompts for an explainer in a fixed house style and the matching programmatic animation spec.
@@ -118,8 +133,22 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
   let scene = sceneIn;
   const qa: QaResult[] = [];
   const visuals: SceneAssets["visuals"] = [];
-  const refs = scene.render?.referenceAssetIds ?? [ctx.style.referenceFrames[brief.background].assetId];
+  const refs = scene.render?.referenceAssetIds?.length ? scene.render.referenceAssetIds : [ctx.style.referenceFrames[brief.background].assetId];
   const scope = (k: string) => `${brief.projectId}:${scene.id}:${k}`;
+
+  if (isCodeScene(scene.visualType)) {
+    let animation = await renderCodeScene(ctx, brief, scene, audio, qa);
+    // A 3D scene that never worked: Manim in the math style (no Hedra visuals there), an illustration otherwise.
+    if (!animation && scene.visualType === "three" && brief.style === "math") {
+      qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 3, fallback: "demoted three → manim", notes: null });
+      scene = { ...scene, visualType: "manim" };
+      animation = await renderCodeScene(ctx, brief, scene, audio, qa);
+    }
+    if (animation) return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals: [{ asset: animation, role: "animation" }], qa });
+    if (brief.style === "math") return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, qa });
+    scene = { ...scene, visualType: "still-animated", render: scene.render ? { ...scene.render, hedraPrompt: null, referenceAssetIds: [] } : null };
+    qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 3, fallback: "demoted three → still-animated", notes: null });
+  }
 
   // Fully programmatic scenes need no Hedra visuals beyond an optional background.
   if (scene.visualType === "chart" || scene.visualType === "text") {
@@ -213,4 +242,79 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
   }
 
   return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, qa });
+}
+
+// ---------------------------------------------------------------------------
+// Code scenes
+
+/** Background behind a code scene, matching the composition. */
+function codeBackground(brief: Brief): string {
+  return brief.style === "math" ? "#000000" : brief.background === "dark" ? "#0B1C3F" : "#F6F3EC";
+}
+
+async function scoreCode(ctx: Ctx, scene: Scene, engine: Engine, frames: string[]) {
+  return ctx.llm.vision({
+    system: `Score frames from an animated explainer scene drawn with ${engine === "manim" ? "Manim, in the 3Blue1Brown style" : "three.js (3D)"}. matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no overlapping text or objects, good contrast, the bottom strip clear for captions? hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix.`,
+    user: `Direction: ${scene.visualDirection}\nNarration: ${scene.narration}`,
+    imageUrls: frames,
+    schema: VisionScore,
+  });
+}
+
+/**
+ * Write → render → check, up to three times, feeding render errors and reviewer
+ * notes back. Keeps the best render that worked. Manim scenes that never pass
+ * use a plain safe scene; a 3D scene returns null so the caller can demote it.
+ */
+async function renderCodeScene(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], qa: QaResult[]): Promise<MirroredAsset | null> {
+  const engine = scene.visualType as Engine;
+  const progress = makeProgress(ctx, brief.projectId, "visuals");
+  const n = scene.id.slice(1);
+  const durationS = +(audio.durationS + VIDEO_TIMING.sceneTailS).toFixed(2);
+  const background = codeBackground(brief);
+  const rules = (engine === "manim" ? MANIM_RULES : threeRules(brief.style, brief.background))
+    .replaceAll("{DURATION}", durationS.toFixed(1))
+    .replaceAll("{BUDGET}", Math.max(1, durationS - 0.5).toFixed(1))
+    .replaceAll("{FRAMES}", String(Math.round(durationS * 30)));
+  const brief0 = [
+    `Scene ${n} (${scene.beat}): ${scene.purpose}`,
+    `What is seen: ${scene.visualDirection}`,
+    scene.onScreenTerms.length ? `Terms that may appear as labels: ${scene.onScreenTerms.join(", ")}` : "",
+    `Narration timeline (seconds from the start of the scene):\n${narrationTimeline(scene.narration, audio.words)}`,
+  ].filter(Boolean).join("\n\n");
+
+  let feedback = "";
+  let best: { asset: MirroredAsset; score: number } | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await progress(`${attempt === 1 ? "writing" : "fixing"} the ${engine === "manim" ? "animation" : "3D scene"} for scene ${n}`, 0.3 + 0.15 * attempt);
+    const { code: raw } = await ctx.llm.json({ system: rules, user: brief0 + feedback, schema: SceneCode, maxTokens: 6000 });
+    const code = stripFences(raw);
+    const r = await ctx.animator.render(engine, code, durationS, background);
+    if (!r.ok) {
+      qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: attempt, fallback: null, notes: `${engine} code failed: ${r.error.slice(-300)}` });
+      feedback = `\n\nYOUR PREVIOUS CODE FAILED. Fix it and return the full corrected code.\n--- code ---\n${code}\n--- error ---\n${r.error}`;
+      continue;
+    }
+    const asset = await ctx.mirror.put(brief.projectId, `${scene.id}-${engine}-${attempt}.mp4`, r.video, "video/mp4", { width: 1920, height: 1080, durationMs: Math.round(durationS * 1000) });
+    const mirrored: MirroredAsset = { ...asset, model: engine, costUsd: 0 };
+    const frames = await ctx.frames.sample(mirrored.url, 3).catch(() => null);
+    const score = frames ? await scoreCode(ctx, scene, engine, frames) : { matchesDirection: 0.7, styleMatch: 0.7, hasText: false, notes: "frames unavailable; accepted unchecked" };
+    const s = Math.min(score.matchesDirection, score.styleMatch);
+    const ok = score.matchesDirection >= PASS - 0.1 && score.styleMatch >= PASS;
+    qa.push({ check: "visual-matches-direction", passed: ok, score: s, attempts: attempt, fallback: null, notes: score.notes });
+    if (!best || s > best.score) best = { asset: mirrored, score: s };
+    if (ok) break;
+    feedback = `\n\nYOUR PREVIOUS CODE RENDERED, but a reviewer looking at frames said: ${score.notes}\nImprove it and return the full code.\n--- code ---\n${code}`;
+  }
+
+  if (!best && engine === "manim") {
+    const r = await ctx.animator.render("manim", fallbackManim(scene.narration, scene.onScreenTerms), durationS, background);
+    if (r.ok) {
+      const asset = await ctx.mirror.put(brief.projectId, `${scene.id}-manim-fallback.mp4`, r.video, "video/mp4", { width: 1920, height: 1080, durationMs: Math.round(durationS * 1000) });
+      best = { asset: { ...asset, model: "manim", costUsd: 0 }, score: 0 };
+      qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 3, fallback: "safe Manim scene", notes: null });
+    }
+  }
+  if (best) await progress(`animated scene ${n}`, 0.9, { sceneId: scene.id, clipUrl: best.asset.url });
+  return best?.asset ?? null;
 }

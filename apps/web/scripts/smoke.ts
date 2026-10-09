@@ -20,7 +20,7 @@ import Ajv from "ajv";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { eq } from "drizzle-orm";
 import { AssetMirror, HedraError, type JobResult } from "@explainer/hedra";
-import { makeFunctions, loadHouseStyle, FallbackAligner, OpenAILLM, type Ctx, type Search } from "@explainer/pipeline";
+import { makeFunctions, loadHouseStyle, FallbackAligner, OpenAILLM, HttpAnimator, type Ctx, type Search } from "@explainer/pipeline";
 import { LocalRenderer, FfmpegFrameSampler, remotionFf } from "@explainer/render";
 import { db, schema } from "../src/lib/db";
 import { drizzleStore } from "../src/lib/store";
@@ -108,7 +108,7 @@ const NARRATION: Record<string, string> = {
   payoff: "Blue light scatters about five times more than red light. That is Rayleigh scattering.",
   recap: "After watching, you can explain why the daytime sky looks blue.",
 };
-const TYPES: Record<string, string> = { hook: "still-animated", ground: "diagram", misconception: "clip", "build-up": "presenter", core: "reference-seq", payoff: "chart", recap: "text" };
+const TYPES: Record<string, string> = { hook: "still-animated", ground: "diagram", misconception: "clip", "build-up": "three", core: "reference-seq", payoff: "chart", recap: "text" };
 const BEATS = Object.keys(NARRATION);
 
 /** Canned answers by prompt; the real OpenAILLM sends them through a fake Responses API below. */
@@ -144,6 +144,12 @@ function answer(system: string, user: string): unknown {
       : { kind: "none" };
     return { hedraPrompt: type === "chart" || type === "text" ? null : "Flat vector illustration, detailed. A sunbeam splitting into coloured threads. No text, no labels.", animSpec };
   }
+  if (/You write Manim Community Edition code/.test(system)) {
+    // The hook's first attempt is broken, to exercise the fix loop.
+    const broken = /\(hook\)/.test(user) && !/YOUR PREVIOUS CODE FAILED/.test(user);
+    return { code: broken ? MANIM_CODE.replace("Create(axes)", "Creat(axes)") : MANIM_CODE };
+  }
+  if (/You write a React Three Fiber scene/.test(system)) return { code: THREE_CODE };
   if (/Final transcript check/.test(system)) return { driftedSentences: [] };
   if (/You are the intended learner/.test(system)) return { goalAnswer: "Blue scatters most.", couldMeetGoal: true, confusingScenes: [] };
   throw new Error(`fake LLM has no answer for: ${system.slice(0, 80)}`);
@@ -205,6 +211,39 @@ function fakeOpenAI(log: string[], bad: string[]) {
     };
   };
 }
+
+const MANIM_CODE = String.raw`class GeneratedScene(Scene):
+    def construct(self):
+        title = Text("Rayleigh scattering", font_size=44).to_edge(UP)
+        law = MathTex(r"I", r"\propto", r"\frac{1}{\lambda^4}", font_size=64).next_to(title, DOWN, buff=0.4)
+        law[2].set_color(YELLOW)
+        self.play(Write(title), run_time=1)
+        self.play(Write(law), run_time=1.5)
+        axes = Axes(x_range=[0.4, 0.7, 0.1], y_range=[0, 6, 1], x_length=7, y_length=2.6).shift(DOWN * 0.9)
+        curve = axes.plot(lambda x: 5 * (0.4 / x) ** 4, color=BLUE)
+        self.play(Create(axes), run_time=1)
+        self.play(Create(curve), run_time=1.5)
+        self.play(Indicate(law[2]), run_time=1)
+`;
+
+const THREE_CODE = `import { useCurrentFrame, useVideoConfig, interpolate } from "remotion";
+
+export default function Scene() {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  const grow = interpolate(frame, [0, 30], [0.3, 1], { extrapolateRight: "clamp" });
+  return (
+    <>
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[3, 4, 5]} intensity={1.2} />
+      <mesh scale={grow} rotation={[0.3, (frame / durationInFrames) * Math.PI * 2, 0]}>
+        <icosahedronGeometry args={[1.4, 1]} />
+        <meshToonMaterial color="#8FB8E8" />
+      </mesh>
+    </>
+  );
+}
+`;
 
 const TITLES: Record<string, string> = {
   "https://en.wikipedia.org/wiki/Rayleigh_scattering": "Rayleigh scattering",
@@ -327,82 +366,107 @@ async function main() {
     mirror: new AssetMirror(s3cfg),
     aligner: new FallbackAligner(null),
     frames: new FfmpegFrameSampler(),
+    // Real sandboxes when configured (the Docker stack sets these); otherwise no Manim / 3D scenes.
+    animator: new HttpAnimator({ manim: process.env.MANIM_URL || undefined, three: process.env.THREE_URL || undefined }),
     store: drizzleStore,
     style: loadHouseStyle(),
     now: () => new Date().toISOString(),
   };
 
   const question = "why is the sky blue?";
-  const [project] = await db.insert(schema.projects).values({ question, shareSlug: `smoke-${Date.now()}` }).returning({ id: schema.projects.id });
-  const projectId = project!.id;
-  console.log(`project ${projectId}`);
-
-  // Drive the real Inngest handler; step results round-trip through JSON as they do in Inngest.
   const [fn] = makeFunctions(() => ctx, () => new LocalRenderer(upload));
   const step = {
     run: async (id: string, f: () => Promise<unknown>) => {
       const t = Date.now();
       const r = await f();
       console.log(`  step ${id} ${((Date.now() - t) / 1000).toFixed(1)}s`);
+      // Step results round-trip through JSON, as they do in Inngest.
       return r === undefined ? undefined : JSON.parse(JSON.stringify(r));
     },
     sendEvent: async () => undefined,
   };
-  const t0 = Date.now();
-  const result = (await (fn as any).fn({ event: { name: "project/created", data: { projectId, question } }, step })) as { videoUrl: string; durationS: number; qa: { check: string; passed: boolean; notes: string | null }[] };
-  console.log(`pipeline finished in ${((Date.now() - t0) / 1000).toFixed(0)}s → ${result.videoUrl} (${result.durationS.toFixed(1)}s)`);
 
-  // ---- checks
-  const fail: string[] = [...bad];
-  const [p] = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId));
-  if (p?.stage !== "done") fail.push(`project stage is ${p?.stage}, expected done`);
+  // Illustrated always; the 3Blue1Brown style (and 3D scenes) when the animation sandboxes are configured.
+  const engines = await ctx.animator.available();
+  const runs: ("illustrated" | "math")[] = engines.includes("manim") ? ["illustrated", "math"] : ["illustrated"];
+  if (!engines.includes("manim")) console.log("(MANIM_URL not set or not healthy: skipping the 3Blue1Brown-style run)");
+  if (!engines.includes("three")) console.log("(THREE_URL not set or not healthy: no 3D scenes)");
+  const fail: string[] = [];
+  const kept: string[] = [];
 
-  const video = join(dir, "out.mp4");
-  const res = await fetch(result.videoUrl);
-  if (!res.ok) fail.push(`video not downloadable: ${res.status}`);
-  writeFileSync(video, Buffer.from(await res.arrayBuffer()));
-  const probed = Number((await ffmpeg()("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video])).trim());
-  if (Math.abs(probed - result.durationS) > 0.5) fail.push(`video is ${probed}s, expected ${result.durationS}s`);
+  for (const style of runs) {
+    const before = log.length;
+    const [project] = await db.insert(schema.projects).values({ question, style, shareSlug: `smoke-${Date.now()}` }).returning({ id: schema.projects.id });
+    const projectId = project!.id;
+    console.log(`\n${style} run: project ${projectId}`);
+    const t0 = Date.now();
+    const result = (await (fn as any).fn({ event: { name: "project/created", data: { projectId, question, style } }, step })) as { videoUrl: string; durationS: number };
+    console.log(`pipeline finished in ${((Date.now() - t0) / 1000).toFixed(0)}s → ${result.videoUrl} (${result.durationS.toFixed(1)}s)`);
+    const runLog = log.slice(before);
+    const f = (msg: string) => fail.push(`[${style}] ${msg}`);
 
-  // The clip scene's narration outlasts its clip: late in the scene we must still see the clip's last frame.
-  const plan = (await db.select().from(schema.artifacts).where(eq(schema.artifacts.projectId, projectId))).filter((a) => a.kind === "plan").at(-1)!.data as any;
-  const assets = (await db.select().from(schema.artifacts).where(eq(schema.artifacts.projectId, projectId))).filter((a) => a.kind === "sceneAssets").map((a) => a.data as any);
-  let offset = 0;
-  for (const s of plan.scenes) {
-    const a = assets.find((x) => x.sceneId === s.id);
-    const clip = a.visuals.find((v: any) => v.role === "clip");
-    if (s.visualType === "clip" && clip) {
-      const t = offset + a.audio.durationS - 0.8;
-      const clipS = clip.asset.durationMs / 1000;
-      if (a.audio.durationS - 0.8 <= clipS) fail.push(`test setup: clip scene narration (${a.audio.durationS}s) not longer than clip (${clipS}s)`);
-      const frame = join(dir, "late.png");
-      await ffmpeg()("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", video, "-frames:v", "1", "-vf", "scale=1:1", "-pix_fmt", "rgb24", "-y", frame]);
-      const pngBytes = readFileSync(frame);
-      const i = pngBytes.indexOf("IDAT");
-      const [, r = 0, g = 0, b = 0] = inflateSync(pngBytes.subarray(i + 4, i + 4 + pngBytes.readUInt32BE(i - 4)));
-      console.log(`  clip scene ${s.id}: frame at ${t.toFixed(1)}s (clip is ${clipS}s) = rgb(${r},${g},${b})`);
-      // Past the clip's end it keeps moving (forward and back), so any clip frame is right; the scene background is not.
-      const clipFrame = Math.max(r, g, b) > 120 && Math.min(r, g, b) < 100;
-      if (!stills.length && !clipFrame) fail.push(`clip scene ${s.id}: expected a clip frame at ${t.toFixed(1)}s (clip is ${clipS}s), got rgb(${r},${g},${b})`);
+    const [p] = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId));
+    if (p?.stage !== "done") f(`project stage is ${p?.stage}, expected done`);
+
+    const video = join(dir, `out-${style}.mp4`);
+    const res = await fetch(result.videoUrl);
+    if (!res.ok) f(`video not downloadable: ${res.status}`);
+    writeFileSync(video, Buffer.from(await res.arrayBuffer()));
+    const probed = Number((await ffmpeg()("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video])).trim());
+    if (Math.abs(probed - result.durationS) > 0.5) f(`video is ${probed}s, expected ${result.durationS}s`);
+
+    const rows = await db.select().from(schema.artifacts).where(eq(schema.artifacts.projectId, projectId));
+    const plan = rows.filter((a) => a.kind === "plan").at(-1)!.data as any;
+    const assets = rows.filter((a) => a.kind === "sceneAssets").map((a) => a.data as any);
+    let offset = 0;
+    for (const s of plan.scenes) {
+      const a = assets.find((x) => x.sceneId === s.id);
+      const clip = a.visuals.find((v: any) => v.role === "clip");
+      // The clip scene's narration outlasts its clip: late in the scene the clip must still be on screen, moving.
+      if (s.visualType === "clip" && clip) {
+        const t = offset + a.audio.durationS - 0.8;
+        const clipS = clip.asset.durationMs / 1000;
+        if (a.audio.durationS - 0.8 <= clipS) f(`test setup: clip scene narration (${a.audio.durationS}s) not longer than clip (${clipS}s)`);
+        const frame = join(dir, "late.png");
+        await ffmpeg()("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", video, "-frames:v", "1", "-vf", "scale=1:1", "-pix_fmt", "rgb24", "-y", frame]);
+        const pngBytes = readFileSync(frame);
+        const i = pngBytes.indexOf("IDAT");
+        const [, r = 0, g = 0, b = 0] = inflateSync(pngBytes.subarray(i + 4, i + 4 + pngBytes.readUInt32BE(i - 4)));
+        console.log(`  clip scene ${s.id}: frame at ${t.toFixed(1)}s (clip is ${clipS}s) = rgb(${r},${g},${b})`);
+        const clipFrame = Math.max(r, g, b) > 120 && Math.min(r, g, b) < 100;
+        if (!stills.length && !clipFrame) f(`clip scene ${s.id}: expected a clip frame at ${t.toFixed(1)}s (clip is ${clipS}s), got rgb(${r},${g},${b})`);
+      }
+      // Code scenes must have their render.
+      if ((s.visualType === "manim" || s.visualType === "three") && !a.visuals.some((v: any) => v.role === "animation")) f(`${s.id} (${s.visualType}) has no animation`);
+      offset += a.audio.durationS + 0.6;
     }
-    offset += a.audio.durationS + 0.6;
+
+    console.log(`  scenes ${plan.scenes.map((s: any) => `${s.id}:${s.visualType}`).join(" ")}`);
+    if (plan.scenes.some((s: any) => s.targetS > 45)) f("targetS not clamped");
+    const qaFailed = assets.flatMap((a) => a.qa.filter((q: any) => !q.passed).map((q: any) => `${a.sceneId} ${q.check}: ${(q.notes ?? q.fallback ?? "").slice(0, 120)}`));
+    console.log(`  expected QA retries:\n    ${qaFailed.join("\n    ") || "(none)"}`);
+    const hedraJobs = runLog.filter((l) => l.startsWith("hedra"));
+    console.log(`  ${hedraJobs.length} Hedra jobs, ${runLog.filter((l) => l.startsWith("llm")).length} LLM calls`);
+
+    if (style === "illustrated") {
+      if (!qaFailed.some((q) => /MODERATION_FAILED/.test(q)) && !runLog.includes("hedra recraft-v3")) f("moderation fallback path not exercised");
+      if (engines.includes("three") && !plan.scenes.some((s: any) => s.visualType === "three")) f("no 3D scene though the three animator is running");
+    } else {
+      if (hedraJobs.some((l) => !l.startsWith("hedra elevenlabs"))) f(`Hedra image/video jobs in the math style: ${hedraJobs.join(", ")}`);
+      if (!plan.scenes.some((s: any) => s.visualType === "manim")) f("no Manim scene in the math style");
+      const notes = assets.flatMap((a) => a.qa.map((q: any) => String(q.notes ?? "")));
+      if (!notes.some((n) => /manim code failed:[\s\S]*NameError: name 'Creat'/.test(n))) f("broken first Manim attempt wasn't fed back and fixed");
+    }
+    kept.push(projectId);
   }
 
-  const types = plan.scenes.map((s: any) => `${s.id}:${s.visualType}`).join(" ");
-  console.log(`  scenes ${types}`);
-  if (plan.scenes.some((s: any) => s.visualType === "presenter")) fail.push("presenter scene was not mapped");
-  if (plan.scenes.some((s: any) => s.targetS > 45)) fail.push("targetS not clamped");
-  const qaFailed = assets.flatMap((a) => a.qa.filter((q: any) => !q.passed).map((q: any) => `${a.sceneId} ${q.check}: ${q.notes ?? q.fallback}`));
-  console.log(`  expected QA retries:\n    ${qaFailed.join("\n    ") || "(none)"}`);
-  if (!qaFailed.some((q) => /MODERATION_FAILED/.test(q)) && !log.includes("hedra recraft-v3")) fail.push("moderation fallback path not exercised");
-  console.log(`  ${log.filter((l) => l.startsWith("hedra")).length} Hedra jobs, ${log.filter((l) => l.startsWith("llm")).length} LLM calls`);
-
+  fail.unshift(...bad);
   server.close();
   if (fail.length) {
     console.error(`\nSMOKE FAILED:\n- ${fail.join("\n- ")}`);
     process.exit(1);
   }
-  if (!process.env.SMOKE_KEEP) await db.delete(schema.projects).where(eq(schema.projects.id, projectId)); // keep the library clean
+  if (!process.env.SMOKE_KEEP) for (const id of kept) await db.delete(schema.projects).where(eq(schema.projects.id, id)); // keep the library clean
   console.log("\nSMOKE OK");
   process.exit(0);
 }

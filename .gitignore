@@ -10,3 +10,4 @@ out
 /apps/web/drizzle/meta
 /packages/render/out
 .DS_Store
+/packages/render/.three-jobs
