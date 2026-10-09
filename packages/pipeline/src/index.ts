@@ -4,6 +4,7 @@ export * from "./providers/llm.js";
 export * from "./providers/search.js";
 export * from "./providers/alignment.js";
 export * from "./providers/store.js";
+export * from "./providers/frames.js";
 export * from "./stages/intake.js";
 export * from "./stages/research.js";
 export * from "./stages/script.js";

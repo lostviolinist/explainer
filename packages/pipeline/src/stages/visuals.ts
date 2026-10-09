@@ -166,8 +166,8 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
             });
       const m = await mirrorOutcome(ctx, brief.projectId, out);
       await ctx.store.recordCost(brief.projectId, "video", out.costUsd, scene.id);
-      // Sample start / middle / end: both bake-off failures appeared after the first second.
-      const score = await scoreFrames(ctx, scene, [m.url]);
+      // Score start / middle / end frames: both bake-off failures appeared after the first second.
+      const score = await scoreFrames(ctx, scene, await ctx.frames.sample(m.url, 3));
       const ok = score.styleMatch >= PASS && score.matchesDirection >= PASS - 0.1 && !score.hasText;
       qa.push({ check: "style-consistency", passed: ok, score: score.styleMatch, attempts: attempt, fallback: null, notes: score.notes });
       if (ok) moving = m;

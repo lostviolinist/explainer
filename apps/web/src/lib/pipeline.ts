@@ -4,12 +4,12 @@
  */
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { ctxFromEnv, makeFunctions, type Ctx } from "@explainer/pipeline";
-import { LocalRenderer, LambdaRenderer, type Upload } from "@explainer/render";
+import { LocalRenderer, LambdaRenderer, FfmpegFrameSampler, type Upload } from "@explainer/render";
 import { drizzleStore } from "./store";
 
 let ctx: Ctx | null = null;
 export function getCtx(): Ctx {
-  return (ctx ??= ctxFromEnv(drizzleStore));
+  return (ctx ??= ctxFromEnv(drizzleStore, new FfmpegFrameSampler()));
 }
 
 const s3 = new S3Client({

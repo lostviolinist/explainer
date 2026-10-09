@@ -6,9 +6,10 @@ import { loadHouseStyle, type Ctx } from "../src/context.ts";
 import { intake } from "../src/stages/intake.ts";
 import { script } from "../src/stages/script.ts";
 import { pacingCheck } from "../src/stages/assemble.ts";
+import { renderSceneAssets } from "../src/stages/visuals.ts";
 import { evenSplit, rescale } from "../src/providers/alignment.ts";
 import type { LLM } from "../src/providers/llm.ts";
-import type { ResearchBrief, SceneAssets } from "@explainer/schemas";
+import type { Brief, ResearchBrief, Scene, ScenePlan, SceneAssets } from "@explainer/schemas";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 
@@ -37,6 +38,7 @@ function ctxWith(llm: LLM): Ctx {
     hedra: {} as any,
     mirror: {} as any,
     aligner: { align: async (_u: string, t: string) => ({ words: evenSplit(t, 1), exact: false }) },
+    frames: { sample: async () => [] },
     store: new MemoryStore(),
     style: loadHouseStyle(),
     now: () => "2026-10-07T20:00:00.000Z",
@@ -115,4 +117,62 @@ test("even-split alignment rescales to the real duration", () => {
   assert.equal(w.length, 4);
   assert.equal(w.at(-1)!.end, 8);
   assert.equal(w[1]!.start, 2);
+});
+
+test("clip QA scores frames sampled from the clip, not the video file", async () => {
+  const visionCalls: string[][] = [];
+  const sampled: [string, number][] = [];
+  const llm = scriptedLLM([]);
+  llm.vision = async <T,>(a: { imageUrls: string[]; schema: z.ZodType<T> }) => {
+    visionCalls.push(a.imageUrls);
+    return a.schema.parse({ matchesDirection: 0.9, styleMatch: 0.9, hasText: false, notes: "ok" });
+  };
+  const ctx = ctxWith(llm);
+  const style = ctx.style;
+  let n = 0;
+  ctx.hedra = {
+    run: async (model: string) => {
+      const video = style.models.generatedClip!.includes(model);
+      const id = `asset_${++n}`;
+      return {
+        job_id: `job_${n}`, model, status: "COMPLETED", error: null, cost: 0.1, currency: "USD",
+        outputs: [{ status: "COMPLETED", asset_id: id, voice_id: null, url: `https://hedra.example/${id}`, content_type: video ? "video/mp4" : "image/png", width: 1280, height: 720, duration_ms: video ? 5000 : null }],
+      };
+    },
+  } as any;
+  ctx.mirror = {
+    mirror: async (_p: string, o: any) => ({ hedraAssetId: o.asset_id, url: `http://localhost:9000/explainer-assets/${o.asset_id}`, contentType: o.content_type, width: o.width, height: o.height, durationMs: o.duration_ms }),
+  } as any;
+  ctx.frames = {
+    sample: async (url: string, count: number) => {
+      sampled.push([url, count]);
+      return Array.from({ length: count }, (_, i) => `data:image/jpeg;base64,frame${i}`);
+    },
+  };
+
+  const brief: Brief = {
+    projectId: PID, question: "why is the sky blue?", topic: "sky colour", learningGoal: "explain scattering",
+    level: "basics", ageMode: null, tone: "neutral", background: "light", lengthS: 90, wordBudget: 250,
+    sceneRange: [3, 5], statement: "s", derivedFrom: null,
+  };
+  const scene: Scene = {
+    id: "s1", beat: "hook", purpose: "p", narration: "Sunlight scatters off air.", claimIds: [],
+    visualDirection: "sunlight hitting air molecules, blue rays bouncing, a child looking up", visualType: "clip",
+    targetS: 10, onScreenTerms: [], render: null,
+  };
+  const audio: SceneAssets["audio"] = {
+    asset: { hedraAssetId: "a", url: "http://localhost:9000/explainer-assets/a.mp3", contentType: "audio/mpeg", width: null, height: null, durationMs: 4000, model: "m", costUsd: 0 },
+    durationS: 4,
+    words: [],
+  };
+
+  const out = await renderSceneAssets(ctx, brief, {} as ScenePlan, scene, audio);
+
+  assert.deepEqual(out.visuals.map((v) => v.role), ["still", "clip"]);
+  const clipUrl = out.visuals[1]!.asset.url;
+  assert.deepEqual(sampled, [[clipUrl, 3]]);
+  assert.equal(visionCalls.length, 2);
+  assert.deepEqual(visionCalls[0], [out.visuals[0]!.asset.url]); // the still itself
+  assert.equal(visionCalls[1]!.length, 3);
+  assert.ok(visionCalls[1]!.every((u) => u.startsWith("data:image/jpeg")), "clip QA must see images, never the video URL");
 });

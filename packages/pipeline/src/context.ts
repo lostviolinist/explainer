@@ -7,6 +7,7 @@ import { OpenAILLM, type LLM } from "./providers/llm.js";
 import { ExaSearch, type Search } from "./providers/search.js";
 import { FallbackAligner, HttpAligner, type Aligner } from "./providers/alignment.js";
 import type { ArtifactStore } from "./providers/store.js";
+import type { FrameSampler } from "./providers/frames.js";
 
 export interface HouseStyle {
   name: string;
@@ -39,6 +40,7 @@ export interface Ctx {
   hedra: HedraClient;
   mirror: AssetMirror;
   aligner: Aligner;
+  frames: FrameSampler;
   store: ArtifactStore;
   style: HouseStyle;
   now(): string;
@@ -49,7 +51,7 @@ export function makeProgress(ctx: Ctx, projectId: string, stage: Stage) {
     ctx.store.progress({ projectId, stage, message, fraction, preview, at: ctx.now() });
 }
 
-export function ctxFromEnv(store: ArtifactStore): Ctx {
+export function ctxFromEnv(store: ArtifactStore, frames: FrameSampler): Ctx {
   const env = process.env;
   const need = (k: string) => {
     const v = env[k];
@@ -69,6 +71,7 @@ export function ctxFromEnv(store: ArtifactStore): Ctx {
       publicBase: need("ASSETS_PUBLIC_BASE"),
     }),
     aligner: new FallbackAligner(env.ALIGNMENT_URL ? new HttpAligner(env.ALIGNMENT_URL) : null),
+    frames,
     store,
     style: loadHouseStyle(),
     now: () => new Date().toISOString(),
