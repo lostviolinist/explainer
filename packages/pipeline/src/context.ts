@@ -83,7 +83,8 @@ export function ctxFromEnv(store: ArtifactStore, frames: FrameSampler): Ctx {
     }),
     aligner: new FallbackAligner(env.ALIGNMENT_URL ? new HttpAligner(env.ALIGNMENT_URL) : null),
     frames,
-    animator: new HttpAnimator({ manim: env.MANIM_URL || undefined, three: env.THREE_URL || undefined }),
+    // The Remotion sandbox (THREE_URL) renders both 3D and flat motion graphics.
+    animator: new HttpAnimator({ manim: env.MANIM_URL || undefined, three: env.THREE_URL || undefined, motion: env.THREE_URL || undefined }),
     store,
     style: loadHouseStyle(),
     now: () => new Date().toISOString(),

@@ -13,7 +13,7 @@ const STYLES: { id: Style; name: string; blurb: string; icon: React.ReactNode }[
   {
     id: "illustrated",
     name: "Illustrated",
-    blurb: "Flat illustrations brought to life, with 3D where it helps",
+    blurb: "Flat illustrations and motion graphics, built on screen as it's explained",
     icon: (
       <svg viewBox="0 0 48 32" aria-hidden="true">
         <rect width="48" height="32" rx="6" fill="#F6F3EC" />

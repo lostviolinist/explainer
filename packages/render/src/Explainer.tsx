@@ -40,7 +40,8 @@ export function Explainer(props: ExplainerProps) {
           <Sequence key={s.id} from={from} durationInFrames={frames} name={s.id}>
             <Fade durationInFrames={frames}>
               <Visual scene={s} />
-              <Programmatic scene={s} background={props.background} />
+              {/* Animated scenes draw their own labels and callouts. */}
+              {!s.visuals.some((v) => v.role === "animation") && <Programmatic scene={s} background={props.background} />}
               <Captions words={s.words} narration={s.narration} background={props.background} />
             </Fade>
             <Audio src={s.audioUrl} />

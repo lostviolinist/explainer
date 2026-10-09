@@ -109,3 +109,41 @@ export function fallbackManim(narration: string, terms: string[]): string {
         self.play(Circumscribe(title, color=YELLOW), run_time=1.5)
 `;
 }
+
+/** A part of a still the overlay can point at, in pixels of the 1920×1080 frame. */
+export type StillPart = { name: string; box: [number, number, number, number] };
+
+const HOUSE = {
+  light: { bg: "warm off-white #F6F3EC", ink: "#1B2235" },
+  dark: { bg: "deep navy #0B1C3F", ink: "#F6F3EC" },
+};
+
+/**
+ * Flat-style motion graphics: the illustrated look, built on screen as it's
+ * explained. With `parts`, the code animates callouts over the scene's still.
+ */
+export function motionRules(background: "dark" | "light", parts?: StillPart[]): string {
+  const h = HOUSE[background];
+  const overlay = parts
+    ? `
+OVERLAY MODE: the scene's illustration already fills the frame underneath your code (and zooms slowly with it). Animate ON TOP of it so the picture comes alive as it's explained. Its parts, as pixel boxes [x0, y0, x1, y1]:
+${parts.map((p) => `- ${p.name}: [${p.box.join(", ")}]`).join("\n")}
+Point at the right part when its words are spoken: a ring or rounded highlight that draws itself around it, an arrow that draws on from a label pill to it, a spotlight that dims everything else (a full-frame rgba(27,34,53,0.45) path with the part cut out, fillRule="evenodd"), motion lines or small particles showing flow between parts, numbered tags 1-2-3 for a sequence. Never cover the illustration with opaque shapes; use strokes and translucent fills. Put label pills in empty areas, not on top of parts.`
+    : `
+The ${h.bg} background is already painted. Use the whole frame: the main subject large and clear, supporting details around it.`;
+  return `You write a 2D motion-graphics scene (React + SVG) for one scene of a flat-illustration explainer video. It is rendered frame by frame with Remotion at 1920×1080, 30 fps.
+
+OUTPUT: a TSX module \`export default function Scene()\` returning JSX. Return only the code: no explanations, no markdown fences.
+
+IMPORTS: only from "react", "remotion" (useCurrentFrame, useVideoConfig, interpolate, spring, Easing, random, AbsoluteFill, Sequence), "@remotion/shapes" (components Rect, Circle, Ellipse, Triangle, Star, Pie, Polygon, Arrow, Callout, and make* functions returning SVG paths) and "@remotion/paths" (evolvePath(progress, d) → { strokeDasharray, strokeDashoffset } to draw a path on; getLength, getPointAtLength, interpolatePath). No images, fonts, network, fetch or Math.random (use random("seed")).
+
+ANIMATION: build it on screen like 3Blue1Brown, in sync with the narration.
+- const frame = useCurrentFrame(); const { fps } = useVideoConfig(); timeline times are seconds; frame = seconds × 30. The scene lasts {DURATION} s ({FRAMES} frames).
+- Things appear when they are mentioned: pop in with spring({ frame: frame - start, fps, config: { damping: 14 } }) on scale and opacity; lines, arrows and outlines draw themselves with evolvePath; objects travel along paths (getPointAtLength); values count up with interpolate; shapes morph (interpolatePath); the thing being talked about is highlighted (pulse, ring, colour change, spotlight).
+- Keep something moving in every second; no long static holds. Clamp interpolations (extrapolateLeft/Right: "clamp").
+- Draw in one <svg viewBox="0 0 1920 1080" width="100%" height="100%">; stroke widths 6–10 with round caps and joins.
+
+LOOK (flat house style): flat shapes, no gradients except a soft glow; palette ink ${h.ink}, accents #F2C14E (yellow), #8FB8E8 (blue), #E4573D (red), #5FA36B (green); rounded corners; generous negative space; simple iconic objects built from primitives, recognisable at a glance.
+- Labels: ≤ 4 words, 36–52 px, fontWeight 600–700, in ink or on an accent pill. Never write sentences or the narration (captions are added separately).
+- Keep inside x ∈ [80, 1840], y ∈ [80, 1000], and keep the caption area clear: nothing important at x > 1000 and y > 780.${overlay}`;
+}

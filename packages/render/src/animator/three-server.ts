@@ -1,16 +1,19 @@
 /**
- * three.js sandbox: renders an AI-written React Three Fiber scene to MP4 with Remotion.
+ * Remotion sandbox: renders AI-written scene code to MP4. Two engines:
  *
- *   GET  /health                              -> {"ok": true, "engine": "three"}
- *   POST /render {code, duration_s, background} -> 200 video/mp4
- *                                               422 {"error"} when the code fails (fed back to the model)
- *                                               504 {"error"} on timeout
+ *   three   React Three Fiber (three.js) 3D scenes, rendered with software WebGL.
+ *   motion  2D motion graphics (React + SVG, @remotion/shapes, @remotion/paths) in the
+ *           flat house style; optionally drawn over a still (`image`), which zooms
+ *           slowly together with the overlay so callouts stay on target.
  *
- * The code is a module `export default function Scene()` returning R3F elements,
- * animated from Remotion's frame clock. It is bundled into a throwaway Remotion
- * project and rendered in headless Chrome with software WebGL. Run in a container
- * with no secrets and no internet; imports are limited to react, three,
- * @react-three/fiber and remotion.
+ *   GET  /health                                               -> {"ok": true, "engines": [...]}
+ *   POST /render {engine, code, duration_s, background, image?} -> 200 video/mp4
+ *                                                                422 {"error"} when the code fails (fed back to the model)
+ *                                                                504 {"error"} on timeout
+ *
+ * The code is a module `export default function Scene()`, animated from Remotion's
+ * frame clock, bundled into a throwaway Remotion project and rendered in headless
+ * Chrome. Run in a container with no secrets and no internet.
  */
 import http from "node:http";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -24,23 +27,51 @@ const PORT = Number(process.env.PORT ?? 8002);
 const TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_S ?? 300) * 1000;
 const FPS = 30;
 const [W, H] = [1920, 1080];
-const MAX_BODY = 256 * 1024;
+const MAX_BODY = 16 * 1024 * 1024; // room for a still in overlay mode
 // Jobs live inside packages/render so the bundle resolves react/three/remotion from its node_modules.
 const JOBS = resolve(dirname(fileURLToPath(import.meta.url)), "../../.three-jobs");
 
-const ALLOWED_IMPORTS = new Set(["react", "three", "@react-three/fiber", "remotion"]);
+export type Engine = "three" | "motion";
+const ALLOWED_IMPORTS: Record<Engine, Set<string>> = {
+  three: new Set(["react", "three", "@react-three/fiber", "remotion"]),
+  motion: new Set(["react", "remotion", "@remotion/shapes", "@remotion/paths"]),
+};
 const FORBIDDEN = /\b(fetch|XMLHttpRequest|WebSocket|EventSource|importScripts|eval|Function)\s*\(|\bnew\s+(Worker|Function)\b|\brequire\s*\(|\bimport\s*\(/;
 
 /** Static checks before anything runs: module shape and imports. */
-export function checkCode(code: string): string | null {
+export function checkCode(code: string, engine: Engine = "three"): string | null {
   if (!/export\s+default\s+function\s+Scene\s*\(/.test(code)) return "The code must be a module with `export default function Scene()`.";
+  const allowed = ALLOWED_IMPORTS[engine];
   for (const m of code.matchAll(/^\s*import\s+(?:[^'"]*?\s+from\s+)?["']([^"']+)["']/gm)) {
-    if (!ALLOWED_IMPORTS.has(m[1]!)) return `Import "${m[1]}" is not available. Only react, three, @react-three/fiber and remotion can be imported.`;
+    if (!allowed.has(m[1]!)) return `Import "${m[1]}" is not available. Only ${[...allowed].join(", ")} can be imported.`;
   }
   const bad = code.match(FORBIDDEN);
   if (bad) return `"${bad[0].trim()}" is not allowed: the scene must not load anything or run dynamic code.`;
   return null;
 }
+
+const motionRoot = (durationInFrames: number, background: string, image: string | null) => `import { AbsoluteFill, Composition, Img, interpolate, registerRoot, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import Scene from "./Scene";
+
+function Frame() {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  // The still and the overlay zoom together, so callouts stay on the parts they point at.
+  const zoom = ${image ? "interpolate(frame, [0, durationInFrames], [1, 1.06])" : "1"};
+  return (
+    <AbsoluteFill style={{ backgroundColor: ${JSON.stringify(background)}, overflow: "hidden" }}>
+      <AbsoluteFill style={{ transform: \`scale(\${zoom})\` }}>
+        ${image ? `<Img src={staticFile(${JSON.stringify(image)})} style={{ width: "100%", height: "100%", objectFit: "cover" }} />` : ""}
+        <AbsoluteFill style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+          <Scene />
+        </AbsoluteFill>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+}
+
+registerRoot(() => <Composition id="ThreeScene" component={Frame} durationInFrames={${durationInFrames}} fps={${FPS}} width={${W}} height={${H}} />);
+`;
 
 const root = (durationInFrames: number, background: string) => `import { Composition, registerRoot } from "remotion";
 import { ThreeCanvas } from "@remotion/three";
@@ -70,26 +101,38 @@ const queue: (() => void)[] = [];
 const slot = () => (busy < MAX_PARALLEL ? (busy++, Promise.resolve()) : new Promise<void>((r) => queue.push(() => (busy++, r()))));
 const release = () => (busy--, queue.shift()?.());
 
-export async function renderThree(code: string, durationS: number, background = "#000000"): Promise<{ status: number; video?: Buffer; error?: string }> {
-  const problem = checkCode(code);
+export async function renderThree(
+  code: string,
+  durationS: number,
+  background = "#000000",
+  engine: Engine = "three",
+  image?: { data: Buffer; type: string },
+): Promise<{ status: number; video?: Buffer; error?: string }> {
+  const problem = checkCode(code, engine);
   if (problem) return { status: 422, error: problem };
   const dir = join(JOBS, randomUUID());
-  await mkdir(dir, { recursive: true });
+  await mkdir(join(dir, "public"), { recursive: true });
   const { makeCancelSignal, renderMedia, selectComposition } = await import("@remotion/renderer");
   const { cancelSignal, cancel } = makeCancelSignal();
   const timer = setTimeout(cancel, TIMEOUT_MS);
   try {
     await writeFile(join(dir, "Scene.tsx"), code);
-    await writeFile(join(dir, "Root.tsx"), root(Math.max(1, Math.round(durationS * FPS)), background));
+    const frames = Math.max(1, Math.round(durationS * FPS));
+    let imageName: string | null = null;
+    if (engine === "motion" && image) {
+      imageName = `still.${image.type.includes("png") ? "png" : image.type.includes("webp") ? "webp" : "jpg"}`;
+      await writeFile(join(dir, "public", imageName), image.data);
+    }
+    await writeFile(join(dir, "Root.tsx"), engine === "motion" ? motionRoot(frames, background, imageName) : root(frames, background));
     const { bundle } = await import("@remotion/bundler");
     let serveUrl: string;
     try {
-      serveUrl = await bundle({ entryPoint: join(dir, "Root.tsx"), webpackOverride, outDir: join(dir, "bundle") });
+      serveUrl = await bundle({ entryPoint: join(dir, "Root.tsx"), webpackOverride, outDir: join(dir, "bundle"), publicDir: join(dir, "public") });
     } catch (e) {
       return { status: 422, error: `The code did not compile: ${errorText(e)}` };
     }
     const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || null;
-    const chromiumOptions = { gl: "swangle" as const };
+    const chromiumOptions = engine === "three" ? { gl: "swangle" as const } : {};
     const out = join(dir, "out.mp4");
     try {
       const composition = await selectComposition({ serveUrl, id: "ThreeScene", inputProps: {}, browserExecutable, chromiumOptions });
@@ -116,7 +159,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (req.method === "GET" && req.url === "/health") {
         try {
           await ensureRenderBrowser();
-          return json(res, 200, { ok: true, engine: "three" });
+          return json(res, 200, { ok: true, engines: ["three", "motion"] });
         } catch (e) {
           return json(res, 503, { ok: false, engine: "three", error: errorText(e) });
         }
@@ -127,19 +170,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         raw += chunk;
         if (raw.length > MAX_BODY) return json(res, 413, { error: "body too large" });
       }
-      let code: string, duration: number, background: string;
+      let code: string, duration: number, background: string, engine: Engine, image: { data: Buffer; type: string } | undefined;
       try {
         const body = JSON.parse(raw);
         code = String(body.code);
         duration = Number(body.duration_s);
         background = /^#[0-9a-fA-F]{6}$/.test(body.background ?? "") ? body.background : "#000000";
+        engine = body.engine === "motion" ? "motion" : "three";
+        const m = typeof body.image === "string" ? /^data:(image\/[a-z+]+);base64,(.+)$/.exec(body.image) : null;
+        image = m ? { type: m[1]!, data: Buffer.from(m[2]!, "base64") } : undefined;
       } catch {
-        return json(res, 400, { error: "expected {code, duration_s, background?}" });
+        return json(res, 400, { error: "expected {engine?, code, duration_s, background?, image?}" });
       }
       if (!(duration >= 1 && duration <= 90)) return json(res, 400, { error: "duration_s must be 1–90" });
       await slot();
       try {
-        const r = await renderThree(code, duration, background);
+        const r = await renderThree(code, duration, background, engine, image);
         if (r.status !== 200) return json(res, r.status, { error: r.error });
         res.writeHead(200, { "content-type": "video/mp4", "content-length": r.video!.length }).end(r.video);
       } catch (e) {

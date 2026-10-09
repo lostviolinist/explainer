@@ -110,6 +110,7 @@ const NARRATION: Record<string, string> = {
 };
 const TYPES: Record<string, string> = { hook: "still-animated", ground: "diagram", misconception: "clip", "build-up": "three", core: "reference-seq", payoff: "chart", recap: "text" };
 const BEATS = Object.keys(NARRATION);
+const MOTION_NARRATION = "A blue ray zig-zags from molecule to molecule. Wherever you look, some of it arrives.";
 
 /** Canned answers by prompt; the real OpenAILLM sends them through a fake Responses API below. */
 function answer(system: string, user: string): unknown {
@@ -132,7 +133,12 @@ function answer(system: string, user: string): unknown {
     analogies: [{ text: "Like small pebbles deflecting ripples", explains: ["c2"], breaksDown: "light is not a water wave" }],
   };
   if (/exactly seven beats/.test(system)) return { beats: BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, claimIds: ["c1", "c2"], targetS: 17 })) };
-  if (/Write the scenes for this arc/.test(system)) return { scenes: BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, narration: NARRATION[b], claimIds: ["c1", "c2"], visualDirection: `a sunbeam as a bundle of coloured threads for the ${b}, with air molecules as tiny beads and an eye looking up`, visualType: TYPES[b], targetS: b === "misconception" ? 60 : 12, onScreenTerms: b === "ground" ? ["wavelength"] : [] })) };
+  if (/Write the scenes for this arc/.test(system)) {
+    const scenes = BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, narration: NARRATION[b], claimIds: ["c1", "c2"], visualDirection: `a sunbeam as a bundle of coloured threads for the ${b}, with air molecules as tiny beads and an eye looking up`, visualType: TYPES[b], targetS: b === "misconception" ? 60 : 12, onScreenTerms: b === "ground" ? ["wavelength"] : [] }));
+    // A second core scene as flat motion graphics (Manim in the math style, an animated still without the motion engine).
+    scenes.splice(5, 0, { beat: "core", purpose: "show blue bouncing around", narration: MOTION_NARRATION, claimIds: ["c2"], visualDirection: "a sun on the left firing a ray that zig-zags off air molecules into a waiting eye", visualType: "motion", targetS: 12, onScreenTerms: [] });
+    return { scenes };
+  }
   if (/You will hear the narration/.test(system)) return { goalAnswer: "Air scatters blue light most.", unclearSentences: [], couldMeetGoal: true };
   if (/careful subject expert/.test(system)) return { unsourced: [], overstated: [] };
   if (/You write generation prompts/.test(system)) {
@@ -150,6 +156,11 @@ function answer(system: string, user: string): unknown {
     return { code: broken ? MANIM_CODE.replace("Create(axes)", "Creat(axes)") : MANIM_CODE };
   }
   if (/You write a React Three Fiber scene/.test(system)) return { code: THREE_CODE };
+  if (/You write a 2D motion-graphics scene/.test(system)) {
+    // Overlay mode lists the still's parts in pixels; point at the first one.
+    const box = /OVERLAY MODE[\s\S]*?- ([^:\n]+): \[(\d+), (\d+), (\d+), (\d+)\]/.exec(system);
+    return { code: box ? overlayCode(box[1]!, box.slice(2, 6).map(Number)) : MOTION_CODE };
+  }
   if (/Final transcript check/.test(system)) return { driftedSentences: [] };
   if (/You are the intended learner/.test(system)) return { goalAnswer: "Blue scatters most.", couldMeetGoal: true, confusingScenes: [] };
   throw new Error(`fake LLM has no answer for: ${system.slice(0, 80)}`);
@@ -194,7 +205,10 @@ function fakeOpenAI(log: string[], bad: string[]) {
     for (const u of images) if (!/^data:image\//.test(u)) bad.push(`vision got a non-image input: ${u.slice(0, 60)}`);
     await pause();
     let ans: unknown;
-    if (images.length) {
+    if (/List the visually distinct parts/.test(String(body.instructions ?? ""))) {
+      log.push("llm.vision layout");
+      ans = { parts: [{ name: "sunbeam", x0: 0.1, y0: 0.15, x1: 0.45, y1: 0.55 }, { name: "air molecules", x0: 0.5, y0: 0.2, x1: 0.85, y1: 0.6 }] };
+    } else if (images.length) {
       const n = ++visionCalls;
       log.push(`llm.vision ${images.length} image(s)`);
       const ok = n !== 3; // the 3rd check fails once, to exercise the retry path
@@ -241,6 +255,59 @@ export default function Scene() {
         <meshToonMaterial color="#8FB8E8" />
       </mesh>
     </>
+  );
+}
+`;
+
+const MOTION_CODE = `import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { evolvePath, getLength, getPointAtLength } from "@remotion/paths";
+import { makeCircle } from "@remotion/shapes";
+
+const RAY = "M 420 420 L 800 300 L 1050 560 L 1420 400";
+
+export default function Scene() {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const sun = spring({ frame, fps, config: { damping: 14 } });
+  const t = interpolate(frame, [20, 110], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const draw = evolvePath(t, RAY);
+  const photon = getPointAtLength(RAY, t * getLength(RAY));
+  const { path } = makeCircle({ radius: 110 });
+  return (
+    <svg viewBox="0 0 1920 1080" width="100%" height="100%">
+      <g transform="translate(200 310)">
+        <path d={path} fill="#F2C14E" style={{ transformBox: "fill-box", transformOrigin: "center", transform: \`scale(\${sun})\` }} />
+      </g>
+      {[[800, 300], [1050, 560]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r={28} fill="#8FB8E8" opacity={sun} />)}
+      <path d={RAY} fill="none" stroke="#4A7FD0" strokeWidth={8} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={draw.strokeDasharray} strokeDashoffset={draw.strokeDashoffset} />
+      <circle cx={photon.x} cy={photon.y} r={16} fill="#E4573D" />
+      <ellipse cx={1500} cy={400} rx={80} ry={46} fill="none" stroke="#1B2235" strokeWidth={8} />
+      <circle cx={1500} cy={400} r={22} fill="#1B2235" />
+    </svg>
+  );
+}
+`;
+
+/** Callouts over a still: a ring drawn around one part and a label pill pointing at it. */
+const overlayCode = (name: string, [x0 = 0, y0 = 0, x1 = 0, y1 = 0]: number[]) => `import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { evolvePath } from "@remotion/paths";
+
+const RING = "M ${x0} ${y0} H ${x1} V ${y1} H ${x0} Z";
+
+export default function Scene() {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const ring = evolvePath(interpolate(frame, [10, 50], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }), RING);
+  const pill = spring({ frame: frame - 40, fps, config: { damping: 14 } });
+  return (
+    <svg viewBox="0 0 1920 1080" width="100%" height="100%">
+      <path d="M0 0H1920V1080H0Z M ${x0} ${y0} H ${x1} V ${y1} H ${x0} Z" fill="rgba(27,34,53,0.45)" fillRule="evenodd" opacity={interpolate(frame, [0, 20], [0, 1], { extrapolateRight: "clamp" })} />
+      <path d={RING} fill="none" stroke="#F2C14E" strokeWidth={8} strokeLinejoin="round" strokeDasharray={ring.strokeDasharray} strokeDashoffset={ring.strokeDashoffset} />
+      <g transform={\`translate(${x0} ${Math.max(90, y0 - 80)}) scale(\${pill})\`}>
+        <rect width={${Math.max(220, name.length * 26 + 60)}} height={64} rx={32} fill="#F2C14E" />
+        <text x={30} y={44} fontSize={40} fontWeight={700} fill="#1B2235">${name}</text>
+      </g>
+    </svg>
   );
 }
 `;
@@ -367,7 +434,7 @@ async function main() {
     aligner: new FallbackAligner(null),
     frames: new FfmpegFrameSampler(),
     // Real sandboxes when configured (the Docker stack sets these); otherwise no Manim / 3D scenes.
-    animator: new HttpAnimator({ manim: process.env.MANIM_URL || undefined, three: process.env.THREE_URL || undefined }),
+    animator: new HttpAnimator({ manim: process.env.MANIM_URL || undefined, three: process.env.THREE_URL || undefined, motion: process.env.THREE_URL || undefined }),
     store: drizzleStore,
     style: loadHouseStyle(),
     now: () => new Date().toISOString(),
@@ -390,7 +457,7 @@ async function main() {
   const engines = await ctx.animator.available();
   const runs: ("illustrated" | "math")[] = engines.includes("manim") ? ["illustrated", "math"] : ["illustrated"];
   if (!engines.includes("manim")) console.log("(MANIM_URL not set or not healthy: skipping the 3Blue1Brown-style run)");
-  if (!engines.includes("three")) console.log("(THREE_URL not set or not healthy: no 3D scenes)");
+  if (!engines.includes("three")) console.log("(THREE_URL not set or not healthy: no 3D scenes, motion graphics or animated callouts)");
   const fail: string[] = [];
   const kept: string[] = [];
 
@@ -437,7 +504,9 @@ async function main() {
         if (!stills.length && !clipFrame) f(`clip scene ${s.id}: expected a clip frame at ${t.toFixed(1)}s (clip is ${clipS}s), got rgb(${r},${g},${b})`);
       }
       // Code scenes must have their render.
-      if ((s.visualType === "manim" || s.visualType === "three") && !a.visuals.some((v: any) => v.role === "animation")) f(`${s.id} (${s.visualType}) has no animation`);
+      if (["manim", "three", "motion"].includes(s.visualType) && !a.visuals.some((v: any) => v.role === "animation")) f(`${s.id} (${s.visualType}) has no animation`);
+      // With the motion engine, a diagram's still gets callouts animated over it.
+      if (s.visualType === "diagram" && engines.includes("motion") && !a.visuals.some((v: any) => v.role === "animation" && /-overlay-\d\.mp4$/.test(v.asset.url))) f(`${s.id} (diagram) has no animated callouts`);
       offset += a.audio.durationS + 0.6;
     }
 
@@ -451,6 +520,8 @@ async function main() {
     if (style === "illustrated") {
       if (!qaFailed.some((q) => /MODERATION_FAILED/.test(q)) && !runLog.includes("hedra recraft-v3")) f("moderation fallback path not exercised");
       if (engines.includes("three") && !plan.scenes.some((s: any) => s.visualType === "three")) f("no 3D scene though the three animator is running");
+      if (engines.includes("motion") && !plan.scenes.some((s: any) => s.visualType === "motion")) f("no motion-graphics scene though the motion engine is running");
+      if (engines.includes("motion") && !runLog.includes("llm.vision layout")) f("the diagram still's parts were never located");
     } else {
       if (hedraJobs.some((l) => !l.startsWith("hedra elevenlabs"))) f(`Hedra image/video jobs in the math style: ${hedraJobs.join(", ")}`);
       if (!plan.scenes.some((s: any) => s.visualType === "manim")) f("no Manim scene in the math style");

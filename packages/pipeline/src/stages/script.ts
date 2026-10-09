@@ -87,7 +87,7 @@ export function trimToFit(scenes: Scene[], limitS: number, wordsPerMinute: numbe
 }
 
 const TYPE_DESCRIPTIONS: Record<string, string> = {
-  diagram: "diagram (systems, labelled parts)",
+  diagram: "diagram (a detailed illustration of what something looks like, whose parts get pointed out as they're mentioned: anatomy, machines, places)",
   chart: "chart (numbers from a claim)",
   text: "text (key terms, recap)",
   "still-animated": 'still-animated (metaphors, "imagine a…", historical scenes)',
@@ -95,20 +95,23 @@ const TYPE_DESCRIPTIONS: Record<string, string> = {
   "reference-seq": "reference-seq (a recurring character)",
   manim: "manim (the 3Blue1Brown look: equations, graphs, geometry, arrows, step-by-step derivations; the default in this style)",
   three: "three (a 3D animated model: orbits, molecules, light paths, anything spatial that reads better in 3D)",
+  motion: "motion (flat motion graphics built on screen as it's explained, for how things work: processes, flows, cycles, cause and effect, comparisons, quantities)",
 };
 
 /** Scene types on offer: by style, and only the animation engines that are running. */
 export function visualTypesFor(style: Brief["style"], engines: string[]): Scene["visualType"][] {
   const three = engines.includes("three") ? (["three"] as const) : [];
   if (style === "math" && engines.includes("manim")) return ["manim", ...three, "chart", "text"];
-  return ["diagram", "chart", "text", "still-animated", "clip", "reference-seq", ...three];
+  const motion = engines.includes("motion") ? (["motion"] as const) : [];
+  return [...motion, "diagram", "chart", "text", "still-animated", "clip", "reference-seq", ...three];
 }
 
 /** Off-menu choices map to the closest type on offer. */
 export function fitVisualType(t: Scene["visualType"], offered: Scene["visualType"][]): Scene["visualType"] {
   if (offered.includes(t)) return t;
   if (offered.includes("manim")) return t === "chart" || t === "text" ? t : "manim";
-  return t === "manim" ? "diagram" : "still-animated";
+  if (t === "manim") return offered.includes("motion") ? "motion" : "diagram";
+  return "still-animated";
 }
 
 const LEVEL_WORDS: Record<Brief["level"], string> = {

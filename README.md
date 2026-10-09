@@ -30,16 +30,16 @@ App: http://localhost:3000 · Inngest runs (step-by-step logs and errors): http:
 
 The home page offers two styles:
 
-- **Illustrated**: Hedra stills and clips in the house style, plus 3D scenes where a 3D view explains better.
+- **Illustrated**: the flat house style, animated. Mechanisms and processes are flat motion graphics built on screen as they're explained (shapes pop in, arrows and paths draw themselves, things travel and morph, cued to the narration). Detailed pictures are Hedra stills whose parts get animated callouts as they're mentioned (rings drawn around them, arrows from label pills, a spotlight that dims the rest). Plus Hedra clips and animated stills, and 3D scenes where a 3D view explains better.
 - **3Blue1Brown**: scenes written as [Manim](https://www.manim.community/) code (equations, graphs, geometry), plus 3D scenes. No Hedra images or video, only narration, so it costs a fraction of an illustrated video.
 
-Manim and 3D scenes are code the model writes per scene, timed to the narration. Two sandbox services render it: `animator/manim` (the official Manim image plus a small render server) and `three` (React Three Fiber code rendered with Remotion; `packages/render/src/animator/three-server.ts`). Render errors and reviewer notes on sampled frames go back to the model for up to three attempts. After that, a Manim scene falls back to a plain safe scene, and a 3D scene falls back to an illustration (or to Manim in the 3Blue1Brown style).
+Manim, motion-graphics and 3D scenes are code the model writes per scene, timed to the narration. Two sandbox services render it: `animator/manim` (the official Manim image plus a small render server) and `three` (React + SVG motion graphics and React Three Fiber 3D, both rendered with Remotion; `packages/render/src/animator/three-server.ts`). For callouts, a vision pass first locates the still's parts; the code then draws over the still, which is sent along with it. Render errors and reviewer notes on sampled frames go back to the model for up to three attempts. After that, a Manim scene falls back to a plain safe scene, a motion scene becomes an illustrated diagram, a 3D scene becomes an animated illustration (or Manim in the 3Blue1Brown style), and a diagram whose callouts never work keeps its plain still.
 
-The sandboxes run model-written code, so in the compose file they get no keys, no `.env`, and only the internal `sandbox` network (no internet), with memory, CPU and process limits. When hosting, deploy them privately (not exposed to the internet) and point `MANIM_URL` / `THREE_URL` at them. Both are optional: if one is missing, the setup check shows a warning and the pipeline doesn't use it. Manim's rules for the model distil [adithya-s-k/manim_skill](https://github.com/adithya-s-k/manim_skill) (MIT).
+The sandboxes run model-written code, so in the compose file they get no keys, no `.env`, and only the internal `sandbox` network (no internet), with memory, CPU and process limits. When hosting, deploy them privately (not exposed to the internet) and point `MANIM_URL` / `THREE_URL` at them. Both are optional: if one is missing, the setup check shows a warning and the pipeline doesn't use it (without `three`, illustrated videos are back to stills and Hedra clips). Manim's rules for the model distil [adithya-s-k/manim_skill](https://github.com/adithya-s-k/manim_skill) (MIT).
 
 ## Smoke test without paid APIs
 
-`pnpm --filter @explainer/web smoke` runs the whole pipeline in both styles (the 3Blue1Brown run needs `MANIM_URL`; 3D scenes need `THREE_URL`) — every stage, the Postgres store, the S3 mirror, frame sampling and a real Remotion render — with fake OpenAI, Exa and Hedra. The fake Hedra rejects any request that breaks a model's published input schema. It needs the database and bucket from `.env` (the Docker stack works: `docker compose exec web pnpm --filter @explainer/web smoke`) and prints `SMOKE OK` with the rendered video's URL. To watch the progress page fill in, slow it down and keep the project: `SMOKE_DELAY_MS=3000 SMOKE_KEEP=1`, then open the `/p/<project id>` it prints (`SMOKE_STILLS=a.png,b.png` uses real images as the fake stills).
+`pnpm --filter @explainer/web smoke` runs the whole pipeline in both styles (the 3Blue1Brown run needs `MANIM_URL`; motion graphics, callouts and 3D scenes need `THREE_URL`) — every stage, the Postgres store, the S3 mirror, frame sampling and a real Remotion render — with fake OpenAI, Exa and Hedra. The fake Hedra rejects any request that breaks a model's published input schema. It needs the database and bucket from `.env` (the Docker stack works: `docker compose exec web pnpm --filter @explainer/web smoke`) and prints `SMOKE OK` with the rendered video's URL. To watch the progress page fill in, slow it down and keep the project: `SMOKE_DELAY_MS=3000 SMOKE_KEEP=1`, then open the `/p/<project id>` it prints (`SMOKE_STILLS=a.png,b.png` uses real images as the fake stills).
 
 ## Running locally
 
@@ -76,7 +76,7 @@ Every Hedra call carries an idempotency key from a hash of its input, so retries
 | Models per visual type (`kling-25-turbo` stills-in-motion, `wan-3-0` clips, `minimax-h3` retry) | `config/house-style.json` → `models` |
 | Scene budget: ~165 wpm, 20–40 s scenes | `packages/schemas/src/index.ts` → `sceneBudget` |
 | Video styles and which scene types each offers | `packages/pipeline/src/stages/script.ts` → `visualTypesFor` |
-| Rules for model-written Manim / three.js code | `packages/pipeline/src/stages/engines.ts` |
+| Rules for model-written Manim / motion-graphics / three.js code | `packages/pipeline/src/stages/engines.ts` → `MANIM_RULES`, `motionRules`, `threeRules` |
 | Length cap: 3 min (`MAX_VIDEO_SECONDS`); over-long scripts are rewritten, then trimmed, before any media is made | `packages/pipeline/src/stages/script.ts` → `estimateVideoS`, `trimToFit` |
 | QA pass thresholds and demotion ladder | `packages/pipeline/src/stages/visuals.ts` |
 

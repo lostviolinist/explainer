@@ -140,8 +140,14 @@ importers:
       '@remotion/lambda':
         specifier: ^4.0.230
         version: 4.0.534(@remotion/bundler@4.0.534(@swc/helpers@0.5.15)(postcss@8.5.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.15)(postcss@8.5.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+      '@remotion/paths':
+        specifier: 4.0.534
+        version: 4.0.534(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@remotion/renderer':
         specifier: ^4.0.230
+        version: 4.0.534(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@remotion/shapes':
+        specifier: 4.0.534
         version: 4.0.534(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@remotion/three':
         specifier: 4.0.534
@@ -2029,6 +2035,12 @@ packages:
 
   '@remotion/serverless@4.0.534':
     resolution: {integrity: sha512-zj4NIfs4Adeacik6m4iLUj9QjAHe46jc0CZws4BSlvc+9D1KAo7E3g8WlBEwOZvGliNGS7AQlp67iHt6/S6thg==}
+
+  '@remotion/shapes@4.0.534':
+    resolution: {integrity: sha512-RejGlDRB+oy2+hKylGVdHSFbX2LwwbbEjc27QXbzA7dWj3D3jNsWLROR4k5GCqo9jfjuHtyW0Ue3ZE6SD0eFBA==}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
 
   '@remotion/streaming@4.0.534':
     resolution: {integrity: sha512-GE7wbEbQH15Ul4wCJYv81bjpbVIBKTxkcfCJgtYV8kiydG8v0OduYRyeUk1NTAAm80MK1oGjPOqabwRMxFGOfg==}
@@ -6196,6 +6208,13 @@ snapshots:
       - utf-8-validate
       - webpack-cli
       - webpack-hot-middleware
+
+  '@remotion/shapes@4.0.534(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@remotion/paths': 4.0.534(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      remotion: 4.0.534(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
   '@remotion/streaming@4.0.534': {}
 

@@ -43,6 +43,7 @@ export const VisualType = z.enum([
   "presenter", // optional avatar
   "manim", // AI-written Manim code, 3Blue1Brown style (rendered in the animator sandbox)
   "three", // AI-written three.js (React Three Fiber) 3D scene (rendered in the animator sandbox)
+  "motion", // AI-written 2D motion graphics in the flat house style (rendered in the animator sandbox)
 ]);
 export type VisualType = z.infer<typeof VisualType>;
 

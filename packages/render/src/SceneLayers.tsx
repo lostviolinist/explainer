@@ -34,7 +34,8 @@ export function Visual({ scene }: { scene: Scene }) {
   const animation = scene.visuals.find((v) => v.role === "animation");
 
   if (animation) {
-    // Manim / three.js renders are timed to the narration and frame their own shots: play once, hold the end.
+    // Code renders (Manim, three.js, motion graphics, callouts over a still) are timed to the narration
+    // and frame their own shots: play once, hold the end.
     const video = <OffthreadVideo src={animation.asset.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />;
     const n = animation.asset.durationMs ? Math.floor((animation.asset.durationMs / 1000) * FPS) - 1 : null;
     return <AbsoluteFill>{n !== null && frame >= n ? <Freeze frame={n - 1}>{video}</Freeze> : video}</AbsoluteFill>;

@@ -9,7 +9,7 @@ import { research as runResearch } from "../src/stages/research.ts";
 import { pacingCheck } from "../src/stages/assemble.ts";
 import { renderSceneAssets, planScene } from "../src/stages/visuals.ts";
 import { visualTypesFor, fitVisualType } from "../src/stages/script.ts";
-import type { Animator, Engine } from "../src/providers/animator.ts";
+import type { Animator, Engine, OverlayImage } from "../src/providers/animator.ts";
 import { evenSplit, rescale } from "../src/providers/alignment.ts";
 import type { LLM } from "../src/providers/llm.ts";
 import { noAnimator } from "../src/providers/animator.ts";
@@ -258,7 +258,7 @@ test("trimToFit drops whole middle scenes only when sentences run out, and keeps
 
 function codeCtx(opts: { render: (engine: Engine, code: string, durationS: number) => { ok: true } | { ok: false; error: string }; vision?: (n: number) => number }) {
   const prompts: { system: string; user: string }[] = [];
-  const renders: { engine: Engine; code: string; durationS: number; background: string }[] = [];
+  const renders: { engine: Engine; code: string; durationS: number; background: string; image?: OverlayImage }[] = [];
   let visionCalls = 0;
   const llm: LLM = {
     async json<T>(a: { system: string; user: string; schema: z.ZodType<T> }) {
@@ -272,9 +272,9 @@ function codeCtx(opts: { render: (engine: Engine, code: string, durationS: numbe
   };
   const ctx = ctxWith(llm);
   ctx.animator = {
-    available: async () => ["manim", "three"],
-    render: async (engine, code, durationS, background) => {
-      renders.push({ engine, code, durationS, background });
+    available: async () => ["manim", "three", "motion"],
+    render: async (engine, code, durationS, background, image) => {
+      renders.push({ engine, code, durationS, background, image });
       const r = opts.render(engine, code, durationS);
       return r.ok ? { ok: true, video: new Uint8Array([1, 2, 3]) } : r;
     },
@@ -285,7 +285,7 @@ function codeCtx(opts: { render: (engine: Engine, code: string, durationS: numbe
 }
 
 const mathBrief = { ...briefFor(180), style: "math" as const, background: "dark" as const };
-const codeScene = (visualType: "manim" | "three"): Scene => ({
+const codeScene = (visualType: "manim" | "three" | "motion"): Scene => ({
   id: "s2", beat: "core", purpose: "show the 1/λ⁴ law", narration: "Short waves scatter far more. Blue scatters about five times more than red.",
   claimIds: ["c1"], visualDirection: "the curve 1/λ⁴ drawn on axes, blue end highlighted", visualType, targetS: 10, onScreenTerms: ["wavelength"], render: null,
 });
@@ -336,5 +336,91 @@ test("styles offer their own scene types, limited to running engines", () => {
   assert.equal(fitVisualType("chart", visualTypesFor("math", ["manim"])), "chart");
   assert.equal(fitVisualType("three", visualTypesFor("illustrated", [])), "still-animated");
   assert.equal(fitVisualType("manim", visualTypesFor("illustrated", ["three"])), "diagram");
+  assert.equal(visualTypesFor("illustrated", ["three", "motion"])[0], "motion", "flat motion graphics lead the illustrated menu");
+  assert.ok(!visualTypesFor("illustrated", ["three"]).includes("motion"));
+  assert.ok(!visualTypesFor("math", ["manim", "motion"]).includes("motion"));
+  assert.equal(fitVisualType("manim", visualTypesFor("illustrated", ["motion"])), "motion");
   assert.equal(fitVisualType("presenter", visualTypesFor("illustrated", [])), "still-animated");
+});
+
+test("a diagram whose stills are all rejected keeps the best one instead of going blank", async () => {
+  const llm = scriptedLLM([]);
+  let n = 0;
+  llm.vision = async <T,>(a: { schema: z.ZodType<T> }) => a.schema.parse({ matchesDirection: ++n === 1 ? 0.6 : 0.4, styleMatch: 0.8, hasText: n === 2, notes: "labels baked in" });
+  const ctx = ctxWith(llm);
+  let jobs = 0;
+  ctx.hedra = { run: async (model: string) => ({ job_id: `j${++jobs}`, model, status: "COMPLETED", error: null, cost: 0.08, currency: "USD", outputs: [{ status: "COMPLETED", asset_id: `asset_${jobs}`, voice_id: null, url: `https://h/${jobs}`, content_type: "image/jpeg", width: 2048, height: 1152, duration_ms: null, fps: null, error: null }] }) } as any;
+  ctx.mirror = { mirror: async (_p: string, o: any) => ({ hedraAssetId: o.asset_id, url: `http://localhost:9000/explainer-assets/${o.asset_id}`, contentType: o.content_type, width: o.width, height: o.height, durationMs: null }) } as any;
+  const scene: Scene = { id: "s2", beat: "ground", purpose: "p", narration: "Leaves have three pigments.", claimIds: [], visualDirection: "a leaf cross-section as a layered cake, three pigment layers", visualType: "diagram", targetS: 10, onScreenTerms: [], render: null };
+  const audio: SceneAssets["audio"] = { asset: { hedraAssetId: "a", url: "http://localhost:9000/a.mp3", contentType: "audio/mpeg", width: null, height: null, durationMs: 3000, model: "m", costUsd: 0 }, durationS: 3, words: [] };
+  const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, scene, audio);
+  assert.equal(out.visuals.length, 1, "not blank");
+  assert.match(out.visuals[0]!.asset.url, /asset_1$/, "the attempt without baked-in text wins");
+  assert.ok(out.qa.some((q) => q.fallback === "kept the best rejected still"));
+});
+
+// ---------------------------------------------------------------------------
+// Flat motion graphics (illustrated style)
+
+test("an illustrated motion scene is written as flat motion graphics on the house background", async () => {
+  const { ctx, prompts, renders } = codeCtx({ render: () => ({ ok: true }) });
+  const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, codeScene("motion"), codeAudio);
+  assert.deepEqual(renders.map((r) => [r.engine, r.background, r.image]), [["motion", "#F6F3EC", undefined]]);
+  assert.match(prompts[0]!.system, /2D motion-graphics scene/);
+  assert.match(prompts[0]!.system, /\(198 frames\)/, "frame count filled in");
+  assert.doesNotMatch(prompts[0]!.system, /OVERLAY MODE/);
+  assert.deepEqual(out.visuals.map((v) => v.role), ["animation"]);
+  assert.match(out.visuals[0]!.asset.url, /s2-motion-1\.mp4$/);
+});
+
+/** A diagram scene with a fake Hedra still and a vision model that also maps the still's parts. */
+function diagramCtx(render: () => { ok: true } | { ok: false; error: string }, parts = [{ name: "chloroplast", x0: 0.1, y0: 0.2, x1: 0.3, y1: 0.5 }]) {
+  const { ctx, prompts, renders } = codeCtx({ render });
+  const layoutCalls: string[] = [];
+  ctx.llm.vision = async <T,>(a: { system: string; imageUrls: string[]; schema: z.ZodType<T> }) => {
+    if (/List the visually distinct parts/.test(a.system)) {
+      layoutCalls.push(a.imageUrls[0]!);
+      return a.schema.parse({ parts });
+    }
+    return a.schema.parse({ matchesDirection: 0.9, styleMatch: 0.9, hasText: false, notes: "ok" });
+  };
+  ctx.hedra = { run: async (model: string) => ({ job_id: "j1", model, status: "COMPLETED", error: null, cost: 0.08, currency: "USD", outputs: [{ status: "COMPLETED", asset_id: "asset_still", voice_id: null, url: "https://h/1", content_type: "image/png", width: 1920, height: 1080, duration_ms: null, fps: null, error: null }] }) } as any;
+  (ctx.mirror as any).mirror = async (_p: string, o: any) => ({ hedraAssetId: o.asset_id, url: `http://localhost:9000/explainer-assets/${o.asset_id}`, contentType: o.content_type, width: o.width, height: o.height, durationMs: null });
+  const scene: Scene = { ...codeScene("motion"), visualType: "diagram", visualDirection: "a leaf cell as a factory, chloroplasts as solar panels", onScreenTerms: ["chloroplast"] };
+  return { ctx, prompts, renders, layoutCalls, scene };
+}
+
+async function withStillFetch<T>(fn: () => Promise<T>): Promise<T> {
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string) => (String(url).endsWith("asset_still") ? new Response(new Uint8Array([137, 80, 78, 71]), { headers: { "content-type": "image/png" } }) : real(url))) as typeof fetch;
+  try {
+    return await fn();
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+test("a diagram's still gets animated callouts: its parts are located, then pointed at as they're mentioned", async () => {
+  const { ctx, prompts, renders, layoutCalls, scene } = diagramCtx(() => ({ ok: true }));
+  const out = await withStillFetch(() => renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, scene, codeAudio));
+  assert.deepEqual(layoutCalls, ["http://localhost:9000/explainer-assets/asset_still"]);
+  assert.equal(renders.length, 1);
+  assert.equal(renders[0]!.engine, "motion");
+  assert.deepEqual([...renders[0]!.image!.data], [137, 80, 78, 71], "the still is sent with the code");
+  assert.equal(renders[0]!.image!.type, "image/png");
+  assert.match(prompts[0]!.system, /OVERLAY MODE[\s\S]*- chloroplast: \[192, 216, 576, 540\]/, "parts in 1920×1080 pixels");
+  assert.deepEqual(out.visuals.map((v) => v.role), ["background", "animation"], "the still stays as a fallback layer");
+  assert.match(out.visuals[1]!.asset.url, /s2-overlay-1\.mp4$/);
+});
+
+test("a diagram keeps its plain still when the callout code never renders, or the still has no parts", async () => {
+  const failing = diagramCtx(() => ({ ok: false, error: "SyntaxError" }));
+  const out1 = await withStillFetch(() => renderSceneAssets(failing.ctx, briefFor(120), {} as ScenePlan, failing.scene, codeAudio));
+  assert.equal(failing.renders.length, 3);
+  assert.deepEqual(out1.visuals.map((v) => v.role), ["background"]);
+
+  const empty = diagramCtx(() => ({ ok: true }), []);
+  const out2 = await withStillFetch(() => renderSceneAssets(empty.ctx, briefFor(120), {} as ScenePlan, empty.scene, codeAudio));
+  assert.equal(empty.renders.length, 0);
+  assert.deepEqual(out2.visuals.map((v) => v.role), ["background"]);
 });

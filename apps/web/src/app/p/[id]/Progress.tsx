@@ -48,9 +48,10 @@ const BEAT_LABEL: Record<string, string> = {
 };
 const LEVEL_LABEL: Record<string, string> = { nothing: "Beginner", basics: "Some background", deep: "Deep dive" };
 const PROGRAMMATIC = new Set(["chart", "text"]);
-/** Scenes whose animation is written as code (Manim / three.js): no still, just the render. */
-const CODED = new Set(["manim", "three"]);
-const MOVING = new Set(["still-animated", "clip", "reference-seq"]);
+/** Scenes whose animation is written as code (Manim / three.js / flat motion graphics): no still, just the render. */
+const CODED = new Set(["manim", "three", "motion"]);
+/** Scenes whose still gets motion afterwards (a Hedra clip, or callouts animated over a diagram). */
+const MOVING = new Set(["still-animated", "clip", "reference-seq", "diagram"]);
 
 /** Watch the video get made: stages, live storyboard, sources, facts and a quiz while you wait. */
 export function Progress({ projectId, question, initial, initialLive }: { projectId: string; question: string; initial: Ev[]; initialLive: LiveState }) {
