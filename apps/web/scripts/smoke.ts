@@ -25,6 +25,9 @@ import { LocalRenderer, FfmpegFrameSampler, remotionFf } from "@explainer/render
 import { db, schema } from "../src/lib/db";
 import { drizzleStore } from "../src/lib/store";
 
+// SMOKE_DELAY_MS slows every fake call, to watch the progress page; SMOKE_KEEP=1 keeps the project afterwards.
+const DELAY = Number(process.env.SMOKE_DELAY_MS ?? 0);
+const pause = () => (DELAY ? new Promise((r) => setTimeout(r, DELAY * (0.5 + Math.random()))) : Promise.resolve());
 const env = (k: string, d?: string) => process.env[k] || d || (() => { throw new Error(`${k} is not set`); })();
 const ffmpeg = () => remotionFf;
 
@@ -52,9 +55,9 @@ const STILL_RGB = [230, 140, 40];
 const CLIP_START_RGB = [200, 30, 30];
 const CLIP_END_RGB = [30, 180, 60];
 
-async function makeClip(dir: string, ms: number): Promise<Buffer> {
+async function makeClip(dir: string, ms: number, frames?: Buffer[]): Promise<Buffer> {
   const n = Math.round((ms / 1000) * 24);
-  const a = png(640, 360, CLIP_START_RGB), b = png(640, 360, CLIP_END_RGB);
+  const [a, b] = frames?.length ? [frames[0]!, frames.at(-1)!] : [png(640, 360, CLIP_START_RGB), png(640, 360, CLIP_END_RGB)];
   const src = join(dir, `clip-${ms}.pngs`), out = join(dir, `clip-${ms}.mp4`);
   writeFileSync(src, Buffer.concat(Array.from({ length: n }, (_, i) => (i < n / 2 ? a : b))));
   await ffmpeg()("ffmpeg", ["-v", "error", "-f", "image2pipe", "-c:v", "png", "-r", "24", "-i", src, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", out]);
@@ -113,18 +116,20 @@ function fakeLLM(log: string[]): LLM {
   const answer = (system: string, user: string): unknown => {
     if (/turn a learner's question/.test(system)) return { topic: "why the sky is blue", learningGoal: "After watching, the viewer can explain why the daytime sky looks blue.", level: "basics", ageMode: null, tone: "neutral", background: "light", statement: "A 3-minute neutral explainer on sky colour." };
     if (/web search queries/.test(system)) return { queries: ["why is the sky blue", "rayleigh scattering wavelength", "sky blue misconception ocean"] };
-    if (/Extract the claims from this page/.test(system)) return { claims: [
-      { text: "Sunlight contains all visible wavelengths.", type: "fact", fit: "needed", quote: "Sunlight contains all visible wavelengths." },
-      { text: "Air molecules scatter shorter wavelengths more strongly.", type: "process", fit: "needed", quote: "Air molecules scatter shorter wavelengths more strongly." },
-      { text: "Blue light scatters about five times more than red.", type: "number", fit: "nice", quote: "blue light scatters about five times more than red" },
-    ] };
+    if (/Extract the claims from this page/.test(system)) {
+      const k = Object.keys(TITLES).findIndex((u) => user.includes(u));
+      return { claims: [0, 1, 2].map((j) => FACTS[(Math.max(0, k) * 2 + j) % FACTS.length]!).map((text, j) => ({ text, type: j === 2 ? "number" : "fact", fit: j === 0 ? "needed" : "nice", quote: text.slice(0, 200) })) };
+    }
     if (/Merge overlapping claims/.test(system)) return {
       claims: [
         { id: "c1", text: "Sunlight contains all visible wavelengths.", type: "fact", fit: "needed", evidence: [0, 3], contested: false },
         { id: "c2", text: "Air molecules scatter shorter wavelengths more strongly (Rayleigh scattering).", type: "process", fit: "needed", evidence: [1, 4], contested: false },
         { id: "c3", text: "Blue light scatters about five times more than red.", type: "number", fit: "nice", evidence: [2, 99], contested: false },
       ],
-      misconceptions: [{ belief: "The sky reflects the ocean.", correctsWith: ["c2"] }],
+      misconceptions: [
+        { belief: "The sky is blue because it reflects the colour of the ocean.", correctsWith: ["c2"] },
+        { belief: "Sunsets are red because the Sun cools down in the evening.", correctsWith: ["c1"] },
+      ],
       analogies: [{ text: "Like small pebbles deflecting ripples", explains: ["c2"], breaksDown: "light is not a water wave" }],
     };
     if (/exactly seven beats/.test(system)) return { beats: BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, claimIds: ["c1", "c2"], targetS: 17 })) };
@@ -147,10 +152,12 @@ function fakeLLM(log: string[]): LLM {
   return {
     async json<T>(a: { system: string; user: string; schema: z.ZodType<T> }) {
       log.push(`llm.json ${a.system.slice(0, 40)}`);
+      await pause();
       return a.schema.parse(answer(a.system, a.user));
     },
     async vision<T>(a: { imageUrls: string[]; schema: z.ZodType<T> }) {
       const n = ++visionCalls;
+      await pause();
       for (const u of a.imageUrls) {
         const r = await fetch(u);
         if (!r.ok || !(r.headers.get("content-type") ?? "").startsWith("image/")) throw new Error(`vision got a non-image: ${u.slice(0, 80)}`);
@@ -163,12 +170,32 @@ function fakeLLM(log: string[]): LLM {
   };
 }
 
+const TITLES: Record<string, string> = {
+  "https://en.wikipedia.org/wiki/Rayleigh_scattering": "Rayleigh scattering",
+  "https://spaceplace.nasa.gov/blue-sky/": "Why Is the Sky Blue? | NASA Space Place",
+  "https://www.britannica.com/story/why-is-the-sky-blue": "Why Is the Sky Blue? | Britannica",
+  "https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html": "Why is the sky blue? — UC Riverside",
+  "https://www.metoffice.gov.uk/weather/learn-about/weather/optical-effects/why-is-the-sky-blue": "Why is the sky blue? — Met Office",
+  "https://www.scientificamerican.com/article/why-is-the-sky-blue/": "Why Is the Sky Blue? | Scientific American",
+};
+
+const FACTS = [
+  "Sunlight looks white but contains every visible wavelength, from violet to red.",
+  "Nitrogen and oxygen molecules are far smaller than the wavelength of visible light.",
+  "Blue light is scattered about five times more strongly than red light by air molecules.",
+  "The sky isn't violet partly because our eyes are much less sensitive to violet light.",
+  "At sunset, sunlight crosses up to 40 times more air, so most of the blue is scattered away before it reaches you.",
+  "On the Moon there is almost no atmosphere, so the daytime sky looks black.",
+  "Lord Rayleigh worked out the maths of this scattering in 1871.",
+  "Mars has a butterscotch daytime sky and blue sunsets, because its dust scatters light differently.",
+];
+
 const fakeSearch: Search = {
   async search(q) {
-    return ["https://en.wikipedia.org/wiki/Rayleigh_scattering", "https://www.nasa.gov/sky-blue", `https://example.com/${encodeURIComponent(q)}`].map((url) => ({ url, title: url, snippet: q }));
+    return Object.keys(TITLES).filter((_, i) => i % 3 === q.length % 3 || i < 2).map((url) => ({ url, title: TITLES[url]!, snippet: q }));
   },
   async open(url) {
-    return { url, title: `Page at ${new URL(url).hostname}`, text: "Sunlight contains all visible wavelengths. Air molecules scatter shorter wavelengths more strongly. ".repeat(20) };
+    return { url, title: TITLES[url] ?? url, text: "Sunlight contains all visible wavelengths. Air molecules scatter shorter wavelengths more strongly. ".repeat(20) };
   },
 };
 
@@ -188,6 +215,9 @@ async function main() {
   writeFileSync(join(dir, "still.png"), media.get("/still.png")!.bytes);
   await ffmpeg()("ffmpeg", ["-v", "error", "-i", join(dir, "still.png"), "-y", jpg]);
   media.set("/still.jpg", { bytes: readFileSync(jpg), type: "image/jpeg" });
+  // SMOKE_STILLS=a.png,b.png: use real images as the fake stills (nicer when watching the progress page).
+  const stills = (process.env.SMOKE_STILLS ?? "").split(",").filter(Boolean);
+  stills.forEach((f, i) => media.set(`/still-${i}.png`, { bytes: readFileSync(f), type: "image/png" }));
 
   const log: string[] = [];
   const bad: string[] = [];
@@ -195,6 +225,8 @@ async function main() {
   let moderated = false;
   const hedra = {
     async run(model: string, input: Record<string, unknown>): Promise<JobResult> {
+      await pause();
+      if (!model.startsWith("elevenlabs")) await pause();
       const v = violations(model, input);
       if (v.length) {
         bad.push(`${model}: ${v.join("; ")}`);
@@ -214,11 +246,13 @@ async function main() {
         out = { path: `/${id}.wav`, type: "audio/wav", w: null, h: null, ms: Math.round(s * 1000) };
       } else if (RULES[model]!.required.includes("duration_ms")) {
         const ms = input.duration_ms as number;
-        if (!media.has(`/clip-${ms}.mp4`)) media.set(`/clip-${ms}.mp4`, { bytes: await makeClip(dir, ms), type: "video/mp4" });
+        if (!media.has(`/clip-${ms}.mp4`)) media.set(`/clip-${ms}.mp4`, { bytes: await makeClip(dir, ms, stills.map((f) => readFileSync(f))), type: "video/mp4" });
         out = { path: `/clip-${ms}.mp4`, type: "video/mp4", w: 640, h: 360, ms };
       } else {
         const j = input.output_format === "jpeg";
-        out = { path: j ? "/still.jpg" : "/still.png", type: j ? "image/jpeg" : "image/png", w: 1920, h: 1080, ms: null };
+        out = stills.length
+          ? { path: `/still-${jobs % stills.length}.png`, type: "image/png", w: 1280, h: 720, ms: null }
+          : { path: j ? "/still.jpg" : "/still.png", type: j ? "image/jpeg" : "image/png", w: 1920, h: 1080, ms: null };
       }
       return {
         job_id: `job_${jobs}`, model, status: "COMPLETED", error: null, cost: 0.01, currency: "USD",
@@ -295,7 +329,7 @@ async function main() {
       const i = pngBytes.indexOf("IDAT");
       const [, r = 0, g = 0, b = 0] = inflateSync(pngBytes.subarray(i + 4, i + 4 + pngBytes.readUInt32BE(i - 4)));
       console.log(`  clip scene ${s.id}: frame at ${t.toFixed(1)}s (clip is ${clipS}s) = rgb(${r},${g},${b})`);
-      if (!(g > 120 && r < 120)) fail.push(`clip scene ${s.id}: expected the clip's last (green) frame held at ${t.toFixed(1)}s, got rgb(${r},${g},${b})`);
+      if (!stills.length && !(g > 120 && r < 120)) fail.push(`clip scene ${s.id}: expected the clip's last (green) frame held at ${t.toFixed(1)}s, got rgb(${r},${g},${b})`);
     }
     offset += a.audio.durationS + 0.6;
   }
@@ -314,7 +348,7 @@ async function main() {
     console.error(`\nSMOKE FAILED:\n- ${fail.join("\n- ")}`);
     process.exit(1);
   }
-  await db.delete(schema.projects).where(eq(schema.projects.id, projectId)); // keep the library clean
+  if (!process.env.SMOKE_KEEP) await db.delete(schema.projects).where(eq(schema.projects.id, projectId)); // keep the library clean
   console.log("\nSMOKE OK");
   process.exit(0);
 }

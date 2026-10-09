@@ -14,13 +14,13 @@ export default async function Home() {
     .limit(6);
   return (
     <main>
-      <h1>What do you want to understand?</h1>
-      <p className="sub">Type a topic or a question. You get a short animated explainer with sources, in about ten minutes.</p>
+      <h1>What do you want to <span className="grad">understand</span>?</h1>
+      <p className="sub">Type a topic or a question. In about ten minutes you get a short animated explainer, researched and sourced, and you can watch it being made.</p>
       <AskForm />
       {recent.length > 0 && (
         <div className="recent">
-          Recently explained
-          <div>
+          <div className="eyebrow">Recently explained</div>
+          <div className="chips">
             {recent.map((p) => (
               <Link key={p.id} href={`/p/${p.id}`}>{p.question}</Link>
             ))}

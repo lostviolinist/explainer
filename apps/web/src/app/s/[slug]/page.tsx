@@ -20,10 +20,8 @@ export default async function SharePage({ params }: { params: Promise<{ slug: st
 
   return (
     <main>
-      <h1>{project.question}</h1>
-      <video className="player" src={render.videoUrl} controls playsInline>
-        <track kind="captions" src={render.srtUrl} srcLang="en" label="English" default />
-      </video>
+      <h1 className="question">{project.question}</h1>
+      <video className="player" src={render.videoUrl} controls playsInline preload="metadata" />
       {research && (
         <section className="sources">
           <h2>Sources</h2>

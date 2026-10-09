@@ -4,6 +4,7 @@ import { asc, eq } from "drizzle-orm";
 import type { RenderResult, ScenePlan, ResearchBrief } from "@explainer/schemas";
 import { db, schema } from "@/lib/db";
 import { latest } from "@/lib/store";
+import { getLiveState } from "@/lib/live";
 import { react } from "@/app/actions";
 import { Progress } from "./Progress";
 
@@ -19,33 +20,36 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
   if (!render) {
     return (
-      <main>
-        <p className="small"><Link href="/">← ask something else</Link></p>
-        <h1>{project.question}</h1>
+      <main className="wide">
+        <p className="back"><Link href="/">← Ask something else</Link></p>
+        <h1 className="question">{project.question}</h1>
         <Progress
           projectId={id}
+          question={project.question}
+          initialLive={await getLiveState(id)}
           initial={events.map((e) => ({ stage: e.stage, message: e.message, fraction: e.fraction, preview: e.preview as any, at: e.at.toISOString() }))}
         />
       </main>
     );
   }
 
-  const [plan, research] = await Promise.all([latest<ScenePlan>(id, "plan"), latest<ResearchBrief>(id, "research")]);
+  const [plan, research, live] = await Promise.all([latest<ScenePlan>(id, "plan"), latest<ResearchBrief>(id, "research"), getLiveState(id)]);
+  const poster = live.scenes.find((s) => s.stillUrl)?.stillUrl;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (
     <main>
-      <p className="small"><Link href="/">← ask something else</Link></p>
-      <h1>{project.question}</h1>
-      <video className="player" src={render.videoUrl} controls playsInline>
-        <track kind="captions" src={render.srtUrl} srcLang="en" label="English" default />
-      </video>
+      <p className="back"><Link href="/">← Ask something else</Link></p>
+      <h1 className="question">{project.question}</h1>
+      {/* Captions are burned into the video; the .srt is offered as a download. */}
+      <video className="player" src={render.videoUrl} poster={poster} controls playsInline preload="metadata" />
 
       <form action={react} className="reactions">
         <input type="hidden" name="projectId" value={id} />
         <button className="btn ghost" name="reaction" value="simpler">Simpler</button>
         <button className="btn ghost" name="reaction" value="deeper">Deeper</button>
         <a className="btn ghost" href={`${appUrl}/s/${project.shareSlug}`}>Share</a>
+        <a className="btn ghost" href={render.srtUrl} download>Captions (.srt)</a>
       </form>
       <form action={react} className="followup">
         <input type="hidden" name="projectId" value={id} />

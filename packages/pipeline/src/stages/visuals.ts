@@ -105,6 +105,7 @@ export async function narrate(ctx: Ctx, brief: Brief, scene: Scene): Promise<Sce
   });
   const asset = await mirrorOutcome(ctx, brief.projectId, out);
   await ctx.store.recordCost(brief.projectId, "narration", out.costUsd, scene.id);
+  await makeProgress(ctx, brief.projectId, "visuals")(`recorded narration for scene ${scene.id.slice(1)}`, 0.2, { sceneId: scene.id, audioUrl: asset.url });
   // Hedra reports duration for audio; estimate from word count if it ever doesn't.
   const durationS = asset.durationMs ? asset.durationMs / 1000 : (scene.narration.split(/\s+/).length / v.wordsPerMinute) * 60;
   const aligned = await ctx.aligner.align(asset.url, scene.narration);
@@ -160,7 +161,7 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
       continue;
     }
     visuals.push({ asset: still, role: scene.visualType === "diagram" ? "background" : "still" });
-    if (brief.projectId && visuals.length === 1) await progress(`first frame ready`, 0.4, { stillUrl: still.url });
+    await progress(`drew scene ${scene.id.slice(1)}`, 0.4, { sceneId: scene.id, stillUrl: still.url });
 
     // 2. Motion, if the type calls for it.
     if (scene.visualType === "diagram") break;
@@ -196,6 +197,7 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
     }
     if (moving) {
       visuals.push({ asset: moving, role: "clip" });
+      await progress(`animated scene ${scene.id.slice(1)}`, 0.9, { sceneId: scene.id, clipUrl: moving.url });
       break;
     }
     const next = DEMOTE[scene.visualType];

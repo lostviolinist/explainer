@@ -28,7 +28,7 @@ App: http://localhost:3000 · Inngest runs (step-by-step logs and errors): http:
 
 ## Smoke test without paid APIs
 
-`pnpm --filter @explainer/web smoke` runs the whole pipeline — every stage, the Postgres store, the S3 mirror, frame sampling and a real Remotion render — with fake OpenAI, Exa and Hedra. The fake Hedra rejects any request that breaks a model's published input schema. It needs the database and bucket from `.env` (the Docker stack works: `docker compose exec web pnpm --filter @explainer/web smoke`) and prints `SMOKE OK` with the rendered video's URL.
+`pnpm --filter @explainer/web smoke` runs the whole pipeline — every stage, the Postgres store, the S3 mirror, frame sampling and a real Remotion render — with fake OpenAI, Exa and Hedra. The fake Hedra rejects any request that breaks a model's published input schema. It needs the database and bucket from `.env` (the Docker stack works: `docker compose exec web pnpm --filter @explainer/web smoke`) and prints `SMOKE OK` with the rendered video's URL. To watch the progress page fill in, slow it down and keep the project: `SMOKE_DELAY_MS=3000 SMOKE_KEEP=1`, then open the `/p/<project id>` it prints (`SMOKE_STILLS=a.png,b.png` uses real images as the fake stills).
 
 ## Running locally
 

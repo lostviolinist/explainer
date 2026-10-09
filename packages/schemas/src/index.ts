@@ -297,11 +297,16 @@ export const ProgressEvent = z.object({
   message: z.string(),
   /** 0–1 */
   fraction: z.number().min(0).max(1),
-  /** Early artifacts worth showing: the hook line, the first still. */
+  /** Early artifacts worth showing while the video is made: sources and facts as they're read, the hook line, each scene's still, clip and narration as they land. */
   preview: z
     .object({
       hookLine: z.string().optional(),
+      sceneId: z.string().optional(),
       stillUrl: z.string().url().optional(),
+      clipUrl: z.string().url().optional(),
+      audioUrl: z.string().url().optional(),
+      source: z.object({ url: z.string(), title: z.string(), domain: z.string() }).optional(),
+      fact: z.string().optional(),
     })
     .optional(),
   at: z.string().datetime(),

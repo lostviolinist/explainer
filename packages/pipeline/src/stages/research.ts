@@ -81,13 +81,17 @@ export async function research(ctx: Ctx, brief: Brief): Promise<{ research: Rese
         maxTokens: 3000,
       });
       perPage.push({ url: p.url, claims: ex.claims });
+      const n = ++done;
+      // Shown live on the progress page: the source being read and a fact from it.
+      const fact = ex.claims.find((c) => c.fit === "needed")?.text ?? ex.claims[0]?.text;
+      const source = { url: p.url, title: p.title, domain: new URL(p.url).hostname.replace(/^www\./, "") };
+      await progress(`reading ${n} of ${pages.length} sources`, 0.2 + 0.4 * (n / pages.length), { source, ...(fact ? { fact } : {}) });
     } catch (e) {
       // Only a bad answer about this page is skippable; API errors (quota, auth, outage) fail the step.
       if (!(e instanceof z.ZodError || e instanceof SyntaxError || /^LLM response incomplete/.test((e as Error).message))) throw e;
       console.warn(`[research] skipped ${p.url}: ${(e as Error).message.slice(0, 200)}`);
+      done++;
     }
-    done++;
-    await progress(`reading ${done} of ${pages.length} sources`, 0.2 + 0.4 * (done / pages.length));
   };
   for (let i = 0; i < pages.length; i += 4) await Promise.all(pages.slice(i, i + 4).map(extract));
   if (perPage.every((pp) => pp.claims.length === 0)) throw new Error(`no claims could be extracted from ${pages.length} sources`);

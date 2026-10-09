@@ -32,7 +32,7 @@ export function AskForm() {
       <div className="setup">
         {!checks && !error && <span className="small">Checking your setup (OpenAI, Exa, Hedra, storage, renderer)…</span>}
         {error && <span className="small">Couldn't run the setup check: {error}</span>}
-        {checks && problems.length === 0 && <span className="small">✓ Setup check passed: {checks.map((c) => c.name).join(", ")}</span>}
+        {checks && problems.length === 0 && <span className="small"><span className="ok">✓</span> Setup check passed: {checks.map((c) => c.name).join(", ")}</span>}
         {problems.length > 0 && (
           <div className="setup-problems">
             <strong>{blocked ? "Fix these before generating a video" : "Heads up"}</strong>
@@ -47,7 +47,7 @@ export function AskForm() {
           </div>
         )}
         {(checks || error) && (
-          <button type="button" className="btn ghost recheck" onClick={() => load(true)}>Check again</button>
+          <button type="button" className="btn ghost small-btn" onClick={() => load(true)}>Check again</button>
         )}
       </div>
     </>
