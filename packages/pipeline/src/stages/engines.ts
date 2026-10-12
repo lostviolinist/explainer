@@ -20,9 +20,20 @@ LOOK (3Blue1Brown)
 - Build up step by step: Create / Write / FadeIn / GrowArrow; move between steps with TransformMatchingTex (equations) or ReplacementTransform (swapping objects); point with Indicate / Circumscribe / SurroundingRectangle; FadeOut what is no longer needed.
 - No captions or subtitles; never write the narration on screen (captions are added separately). Short labels (≤ 4 words) and equations are welcome.
 
+ENGAGEMENT (what keeps people watching)
+- Show before you name: the object appears (Create / GrowFromCenter / FadeIn with shift), then its label a beat later.
+- Something changes every 1–2 s while the narration runs; never hold a static frame for more than 2 s.
+- When a thing is spoken, it reacts: Indicate, Flash, a colour change, or a brief 10% grow-and-back.
+- Zoom when detail matters: use MovingCameraScene and self.play(self.camera.frame.animate.scale(0.6).move_to(obj)), then zoom back out.
+- Transform the previous idea into the next (ReplacementTransform, TransformMatchingTex) rather than fading everything out and starting from blank.
+- Comparisons side by side (VGroup(...).arrange(RIGHT, buff=1)); quantities as bars that grow or a DecimalNumber counting up (ValueTracker).
+- End on the scene's key object alone, centred, with nothing else competing.
+
 LAYOUT
 - Frame: x from -7.1 to 7.1, y from -4 to 4, origin at the centre. Keep everything within x ∈ [-6.6, 6.6], y ∈ [-2.2, 3.6]; the bottom strip is reserved for captions.
 - Position with to_edge / to_corner / next_to(..., buff=0.3) / arrange(..., buff=0.4) / move_to. Never overlap text. Prefer font_size 32–48 for Text and ≤ 72 for MathTex; scale down rather than overflow.
+- Text in a box: SurroundingRectangle(text, buff=0.2, corner_radius=0.15) or BackgroundRectangle(text); never a Rectangle(width=...) with a guessed width, which the text spills out of.
+- Check every object stays inside the frame after it moves; if a group is wide, group.scale_to_fit_width(12).
 
 API RULES (the common mistakes)
 - MathTex(r"...") is already math mode: no $...$ inside. Tex(r"...") is text; math inside it needs $...$. Always raw strings for LaTeX. Standard LaTeX only (amsmath, amssymb); no \\usepackage.
@@ -59,6 +70,7 @@ LOOK
 - ${palette}.
 - One clear subject; 1–3 main objects plus supporting detail. Keep everything in view (roughly x ∈ [-5, 5], y ∈ [-2, 2.8] at z = 0), and keep the bottom strip of the frame clear for captions.
 - No text or labels in 3D (labels are added separately).
+- Keep people watching: the subject appears first (scales up from nothing), something moves every second, the thing being spoken reacts at its cue (a pulse, a glow, a colour shift), the camera pushes in at the key moment and settles on the subject at the end.
 - Keep it light enough to render on a CPU: ≤ 50 meshes, ≤ 64 segments per geometry, instancedMesh for many particles (≤ 2000).`;
 }
 
@@ -135,15 +147,25 @@ The ${h.bg} background is already painted. Use the whole frame: the main subject
 
 OUTPUT: a TSX module \`export default function Scene()\` returning JSX. Return only the code: no explanations, no markdown fences.
 
-IMPORTS: only from "react", "remotion" (useCurrentFrame, useVideoConfig, interpolate, spring, Easing, random, AbsoluteFill, Sequence), "@remotion/shapes" (components Rect, Circle, Ellipse, Triangle, Star, Pie, Polygon, Arrow, Callout, and make* functions returning SVG paths) and "@remotion/paths" (evolvePath(progress, d) → { strokeDasharray, strokeDashoffset } to draw a path on; getLength, getPointAtLength, interpolatePath). No images, fonts, network, fetch or Math.random (use random("seed")).
+IMPORTS: only from "react", "remotion" (useCurrentFrame, useVideoConfig, interpolate, spring, Easing, random, AbsoluteFill, Sequence), "@remotion/shapes" (components Rect, Circle, Ellipse, Triangle, Star, Pie, Polygon, Arrow, Callout, and make* functions returning SVG paths), "@remotion/paths" (evolvePath(progress, d) → { strokeDasharray, strokeDashoffset } to draw a path on; getLength, getPointAtLength, interpolatePath) and "./Label" (the Label component below). No images, fonts, network, fetch or Math.random (use random("seed")).
+
+TEXT: every piece of text is a <Label x={..} y={..} anchor="start|middle|end" color="#F2C14E" ink="#1B2235" size={44} opacity={..} scale={..}>words</Label>, placed AFTER the <svg> as its sibling (return a fragment: <><svg …/><Label …/>…</>). It is positioned in the same 1920×1080 pixels and sizes itself to its text, so its pill can never be too small. Never use SVG <text>, and never draw a rect behind text yourself. color="none" gives plain text. Animate it with its opacity and scale props (spring).
 
 ANIMATION: build it on screen like 3Blue1Brown, in sync with the narration.
 - const frame = useCurrentFrame(); const { fps } = useVideoConfig(); timeline times are seconds; frame = seconds × 30. The scene lasts {DURATION} s ({FRAMES} frames).
 - Things appear when they are mentioned: pop in with spring({ frame: frame - start, fps, config: { damping: 14 } }) on scale and opacity; lines, arrows and outlines draw themselves with evolvePath; objects travel along paths (getPointAtLength); values count up with interpolate; shapes morph (interpolatePath); the thing being talked about is highlighted (pulse, ring, colour change, spotlight).
 - Keep something moving in every second; no long static holds. Clamp interpolations (extrapolateLeft/Right: "clamp").
+
+ENGAGEMENT (what keeps people watching)
+- Show before you name: the shape appears, then its label a beat later.
+- Everything enters from somewhere: it grows from its source point or slides in along its path, with a little overshoot (spring).
+- The thing being talked about reacts at its cue: a pulse, a glow ring, a colour change; the rest dims a little (opacity 0.6) so the eye goes to it.
+- Comparisons side by side; quantities as bars that grow or dots that multiply; sequences as 1-2-3 steps that light up in order.
+- Flow is motion: dots travelling along a path (getPointAtLength), dashes marching (animate strokeDashoffset).
+- End on the key object alone, centred.
 - Draw in one <svg viewBox="0 0 1920 1080" width="100%" height="100%">; stroke widths 6–10 with round caps and joins.
 
 LOOK (flat house style): flat shapes, no gradients except a soft glow; palette ink ${h.ink}, accents #F2C14E (yellow), #8FB8E8 (blue), #E4573D (red), #5FA36B (green); rounded corners; generous negative space; simple iconic objects built from primitives, recognisable at a glance.
 - Labels: ≤ 4 words, 36–52 px, fontWeight 600–700, in ink or on an accent pill. Never write sentences or the narration (captions are added separately).
-- Keep inside x ∈ [80, 1840], y ∈ [80, 1000], and keep the caption area clear: nothing important at x > 1000 and y > 780.${overlay}`;
+- Keep inside x ∈ [80, 1840], y ∈ [80, 1000], and nothing at all in the caption box: x > 1000 and y > 840. Check that moving things stay inside the frame at every moment.${overlay}`;
 }

@@ -55,7 +55,7 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
       // Plan render specs for every scene (cheap text calls), in parallel.
       const planned = await Promise.all(
         plan.scenes.map((s) =>
-          step.run(`plan-${s.id}`, async () => ({ ...s, render: await planScene(ctx, brief, s) })),
+          step.run(`plan-${s.id}`, async () => ({ ...s, render: await planScene(ctx, brief, s, plan.cast) })),
         ),
       );
       const planWithRender = { ...plan, scenes: planned };

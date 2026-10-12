@@ -41,7 +41,7 @@ function ctxWith(llm: LLM): Ctx {
     search: { search: async () => [], open: async () => null },
     hedra: {} as any,
     mirror: {} as any,
-    aligner: { align: async (_u: string, t: string) => ({ words: evenSplit(t, 1), exact: false }) },
+    aligner: { align: async (_u: string, t: string, d: number) => ({ words: evenSplit(t, d), exact: false }) },
     frames: { sample: async () => [] },
     animator: noAnimator,
     store: new MemoryStore(),
@@ -90,7 +90,7 @@ test("script passes learner and expert review on the first attempt and records i
   ];
   const llm = scriptedLLM([
     [/exactly seven beats/, { beats: ["hook", "ground", "misconception", "build-up", "core", "payoff", "recap"].map((b) => ({ beat: b, purpose: "p", claimIds: ["c1"], targetS: 26 })) }],
-    [/Write the scenes/, { scenes }],
+    [/Write the scenes/, { scenes, cast: [] }],
     [/You will hear the narration/, { goalAnswer: "chlorophyll breaks down and other pigments show", unclearSentences: [], couldMeetGoal: true }],
     [/careful subject expert/, { unsourced: [], overstated: [] }],
   ]);
@@ -214,7 +214,7 @@ test("a script that would run past 3 minutes is sent back with the numbers and r
       systems.push(a.system);
       if (/exactly seven beats/.test(a.system)) return a.schema.parse({ beats: BEATS7.map((b) => ({ beat: b, purpose: "p", claimIds: ["c1"], targetS: 25 })) });
       // First draft: 7 scenes × 8 sentences × 10 words = 560 words (~3:54). Second: 7 × 4 × 10 = 280 words.
-      if (/Write the scenes/.test(a.system)) return a.schema.parse({ scenes: BEATS7.map((b) => sceneWith(b, ++draft <= 7 ? 8 : 4)) });
+      if (/Write the scenes/.test(a.system)) return a.schema.parse({ scenes: BEATS7.map((b) => sceneWith(b, ++draft <= 7 ? 8 : 4)), cast: [] });
       if (/You will hear the narration/.test(a.system)) return a.schema.parse({ goalAnswer: "g", unclearSentences: [], couldMeetGoal: true });
       if (/careful subject expert/.test(a.system)) return a.schema.parse({ unsourced: [], overstated: [] });
       throw new Error("unexpected");
@@ -234,7 +234,7 @@ test("a script that would run past 3 minutes is sent back with the numbers and r
 test("if every rewrite runs long, middle scenes are trimmed until it fits; hook and recap stay whole", async () => {
   const llm = scriptedLLM([
     [/exactly seven beats/, { beats: BEATS7.map((b) => ({ beat: b, purpose: "p", claimIds: ["c1"], targetS: 25 })) }],
-    [/Write the scenes/, { scenes: BEATS7.map((b) => sceneWith(b, 9)) }],
+    [/Write the scenes/, { scenes: BEATS7.map((b) => sceneWith(b, 9)), cast: [] }],
     [/You will hear the narration/, { goalAnswer: "g", unclearSentences: [], couldMeetGoal: true }],
     [/careful subject expert/, { unsourced: [], overstated: [] }],
   ]);

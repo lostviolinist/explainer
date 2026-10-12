@@ -12,7 +12,7 @@
  * sentences from the middle scenes.
  */
 import { z } from "zod";
-import { ScenePlan, Scene, Beat, VisualType, VIDEO_TIMING, lengthFromClaims, type Brief, type ResearchBrief } from "@explainer/schemas";
+import { ScenePlan, Scene, Beat, CastMember, VisualType, VIDEO_TIMING, lengthFromClaims, type Brief, type ResearchBrief } from "@explainer/schemas";
 import type { Ctx } from "../context.js";
 import { makeProgress, maxVideoSeconds } from "../context.js";
 
@@ -40,6 +40,8 @@ export const Scenes = z.object({
       onScreenTerms: z.array(z.string()),
     }),
   ).min(3, "write at least 3 scenes"),
+  /** The 3–6 recurring things, so every scene draws them the same way. */
+  cast: z.array(CastMember),
 });
 
 export const LearnerPass = z.object({
@@ -160,13 +162,20 @@ Beat durations sum to ${lengthS} s; the whole video must not exceed ${clock(maxS
       maxTokens: 2500,
     });
 
-    const { scenes } = await ctx.llm.json({
+    const { scenes, cast } = await ctx.llm.json({
       system: `Write the scenes for this arc. ${minScenes}–${maxScenes} scenes, 20–40 s each, ${wordBudget} words of narration in total (hard limit), spoken at about ${ctx.style.voice.wordsPerMinute} words per minute.
 Each scene has three tracks:
 - narration: what is said. Short sentences. Every sentence maps to a claim id in claimIds. Introduce a term before using it. The hook is a question or a surprising fact; the recap restates the goal in one breath.
 - visualDirection: what is seen. It MUST name the scene's metaphor and at least two supporting details, never only the objects (good: "an eye as the observer, a dotted ring for the horizon, ghost stars where the light seems to come from"; bad: "a black hole and a star").
 - visualType, one of: ${offered.map((t) => TYPE_DESCRIPTIONS[t]).join("; ")}.
 Rules: one idea per scene; name a thing before showing its label; a misconception is stated, then corrected; the recap uses the exact words of the learning goal.
+Keep people watching (without losing accuracy):
+- The first sentence is a concrete, surprising image or question, never a definition. Talk to the viewer ("you"). Short sentences, one idea each.
+- Plant a question early and answer it in the payoff; the recap calls back to the hook's image.
+- Every scene has a turn: something unexpected, a comparison with a familiar thing, or "but here's the catch".
+- Numbers as comparisons ("five times more", "a thousand a second"), not bare figures.
+- visualDirection says what MOVES and in what order: what appears first, what changes on which words, what the last frame shows.
+cast: the 3–6 recurring things in this video (the subject, the key parts, the viewer's stand-in), each with a simple look (shape or icon, one line) and one accent colour from #F2C14E (yellow), #8FB8E8 (blue), #E4573D (red), #5FA36B (green); every scene draws them the same way.
 onScreenTerms: words that will appear as labels; must appear in the narration.
 Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.${lengthNote ? `\nLENGTH: ${lengthNote}` : ""}`,
       user: `Arc:\n${JSON.stringify(arc.beats, null, 1)}\n\nClaims:\n${claimList}\n\nAnalogies:\n${analogies}`,
@@ -220,6 +229,7 @@ Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.${lengthNote ? `\nLEN
       projectId: brief.projectId,
       background: brief.background,
       scenes: planScenes,
+      cast: cast.slice(0, 6),
       review: {
         learnerPass: { passed: learnerPassed, goalAnswer: learner.goalAnswer, unclearSentences: learner.unclearSentences },
         expertPass: { passed: expertPassed, unsourced: expert.unsourced, overstated: expert.overstated },

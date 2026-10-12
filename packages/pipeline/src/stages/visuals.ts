@@ -14,11 +14,10 @@
  * All generated assets are mirrored; both the Hedra asset id and our URL are kept.
  */
 import { z } from "zod";
-import { AnimSpec, RenderSpec, SceneAssets, QaResult, VIDEO_TIMING, type Scene, type ScenePlan, type Brief, type MirroredAsset } from "@explainer/schemas";
+import { AnimSpec, RenderSpec, SceneAssets, QaResult, VIDEO_TIMING, type Scene, type ScenePlan, type Brief, type MirroredAsset, type CastMember } from "@explainer/schemas";
 import { generateStill, animateStill, generateClip, generateSpeech, HedraError, type GenOutcome } from "@explainer/hedra";
 import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
-import { rescale } from "../providers/alignment.js";
 import type { Engine, OverlayImage } from "../providers/animator.js";
 import { MANIM_RULES, threeRules, motionRules, narrationTimeline, stripFences, fallbackManim, type StillPart } from "./engines.js";
 
@@ -53,7 +52,10 @@ export const StillLayout = z.object({
   parts: z.array(z.object({ name: z.string(), x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() })),
 });
 
-export async function planScene(ctx: Ctx, brief: Brief, scene: Scene): Promise<RenderSpec> {
+/** "name: look (colour)" lines for prompts, so the same thing looks the same in every scene. */
+const castLines = (cast: CastMember[]) => cast.map((c) => `- ${c.name}: ${c.look} (${c.color})`).join("\n");
+
+export async function planScene(ctx: Ctx, brief: Brief, scene: Scene, cast: CastMember[] = []): Promise<RenderSpec> {
   // Code scenes are written later, once the narration's timing is known.
   if (isCodeScene(scene.visualType)) {
     return RenderSpec.parse({ hedraPrompt: null, model: scene.visualType, referenceAssetIds: [], storyboardAssetId: null, animSpec: { kind: "none" } });
@@ -67,8 +69,9 @@ Rules for hedraPrompt (null for visualType chart/text, since those are fully pro
 - Start with "Flat vector illustration, detailed." Then the scene's metaphor and its supporting details from the visual direction. End with "No text, no labels. Leave the bottom-right quarter clear."
 - Describe one action for a clip; still-animated prompts describe the still only.
 - Never ask for legible text; labels are composited.
+- Recurring things (below) are described the same way in every prompt, so they're recognisable from scene to scene.
 animSpec: labelled-diagram (labels with the exact onScreenTerms and the narration word each appears on), chart (series from the cited claim; claimId), kinetic-text (lines with cue words), path-reveal (ids with cue words) or none.`,
-    user: `Scene ${scene.id} (${scene.beat}, ${scene.visualType}): ${scene.visualDirection}\nNarration: ${scene.narration}\nOn-screen terms: ${scene.onScreenTerms.join(", ")}`,
+    user: `Scene ${scene.id} (${scene.beat}, ${scene.visualType}): ${scene.visualDirection}\nNarration: ${scene.narration}\nOn-screen terms: ${scene.onScreenTerms.join(", ")}${cast.length ? `\nRecurring things:\n${castLines(cast)}` : ""}`,
     schema: Planned,
     maxTokens: 1200,
   });
@@ -128,8 +131,7 @@ export async function narrate(ctx: Ctx, brief: Brief, scene: Scene): Promise<Sce
   await makeProgress(ctx, brief.projectId, "visuals")(`recorded narration for scene ${scene.id.slice(1)}`, 0.2, { sceneId: scene.id, audioUrl: asset.url });
   // Hedra reports duration for audio; estimate from word count if it ever doesn't.
   const durationS = asset.durationMs ? asset.durationMs / 1000 : (scene.narration.split(/\s+/).length / v.wordsPerMinute) * 60;
-  const aligned = await ctx.aligner.align(asset.url, scene.narration);
-  const words = aligned.exact ? aligned.words : rescale(aligned.words, durationS);
+  const { words } = await ctx.aligner.align(asset.url, scene.narration, durationS);
   return { asset, durationS, words };
 }
 
@@ -141,13 +143,14 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
   const refs = scene.render?.referenceAssetIds?.length ? scene.render.referenceAssetIds : [ctx.style.referenceFrames[brief.background].assetId];
   const scope = (k: string) => `${brief.projectId}:${scene.id}:${k}`;
 
+  const cast = plan.cast ?? [];
   if (isCodeScene(scene.visualType)) {
-    let animation = await renderCodeScene(ctx, brief, scene, audio, qa);
+    let animation = await renderCodeScene(ctx, brief, scene, audio, qa, cast);
     // A 3D scene that never worked: Manim in the math style (no Hedra visuals there), an illustration otherwise.
     if (!animation && scene.visualType === "three" && brief.style === "math") {
       qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 3, fallback: "demoted three → manim", notes: null });
       scene = { ...scene, visualType: "manim" };
-      animation = await renderCodeScene(ctx, brief, scene, audio, qa);
+      animation = await renderCodeScene(ctx, brief, scene, audio, qa, cast);
     }
     if (animation) return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals: [{ asset: animation, role: "animation" }], qa });
     if (brief.style === "math") return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, qa });
@@ -212,7 +215,7 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
     // 2. Motion, if the type calls for it. Diagrams: animated callouts over the still, when the motion engine runs.
     if (scene.visualType === "diagram") {
       if ((await ctx.animator.available()).includes("motion")) {
-        const animated = await overlayCallouts(ctx, brief, scene, audio, still, qa);
+        const animated = await overlayCallouts(ctx, brief, scene, audio, still, qa, cast);
         if (animated) visuals.push({ asset: animated, role: "animation" });
       }
       break;
@@ -284,7 +287,7 @@ const ENGINE_LOOK: Record<Engine, string> = {
 async function scoreCode(ctx: Ctx, scene: Scene, engine: Engine, frames: string[], overlay = false) {
   const look = overlay ? "animated callouts (rings, arrows, labels, spotlight) drawn over an illustration; check they point at the right parts" : ENGINE_LOOK[engine];
   return ctx.llm.vision({
-    system: `Score frames from an animated explainer scene: ${look}. matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no overlapping text or objects, good contrast, the bottom strip clear for captions? hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix.`,
+    system: `Score frames from an animated explainer scene: ${look}. matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no text spilling out of its pill or box, no overlapping text or objects, good contrast, the bottom-right corner clear for captions? hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix.`,
     user: `Direction: ${scene.visualDirection}\nNarration: ${scene.narration}`,
     imageUrls: frames,
     schema: VisionScore,
@@ -292,7 +295,7 @@ async function scoreCode(ctx: Ctx, scene: Scene, engine: Engine, frames: string[
 }
 
 /** Find the still's parts, then animate callouts over it with the motion engine. */
-async function overlayCallouts(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], still: MirroredAsset, qa: QaResult[]): Promise<MirroredAsset | null> {
+async function overlayCallouts(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], still: MirroredAsset, qa: QaResult[], cast: CastMember[]): Promise<MirroredAsset | null> {
   const res = await fetch(still.url);
   if (!res.ok) return null;
   const image: OverlayImage = { data: new Uint8Array(await res.arrayBuffer()), type: res.headers.get("content-type") ?? still.contentType };
@@ -308,7 +311,7 @@ async function overlayCallouts(ctx: Ctx, brief: Brief, scene: Scene, audio: Scen
     .slice(0, 8)
     .map((p) => ({ name: p.name, box: [p.x0 * 1920, p.y0 * 1080, p.x1 * 1920, p.y1 * 1080].map((v) => Math.round(Math.min(1920, Math.max(0, v)))) as StillPart["box"] }));
   if (!parts.length) return null;
-  return renderCodeScene(ctx, brief, { ...scene, visualType: "motion" }, audio, qa, { image, parts });
+  return renderCodeScene(ctx, brief, { ...scene, visualType: "motion" }, audio, qa, cast, { image, parts });
 }
 
 /**
@@ -322,6 +325,7 @@ async function renderCodeScene(
   scene: Scene,
   audio: SceneAssets["audio"],
   qa: QaResult[],
+  cast: CastMember[] = [],
   overlay?: { image: OverlayImage; parts: StillPart[] },
 ): Promise<MirroredAsset | null> {
   const engine = scene.visualType as Engine;
@@ -337,6 +341,7 @@ async function renderCodeScene(
     `Scene ${n} (${scene.beat}): ${scene.purpose}`,
     `What is seen: ${scene.visualDirection}`,
     scene.onScreenTerms.length ? `Terms that may appear as labels: ${scene.onScreenTerms.join(", ")}` : "",
+    cast.length && !overlay ? `Recurring cast (draw these exactly so, the same as in every other scene):\n${castLines(cast)}` : "",
     `Narration timeline (seconds from the start of the scene):\n${narrationTimeline(scene.narration, audio.words)}`,
   ].filter(Boolean).join("\n\n");
 

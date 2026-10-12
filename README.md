@@ -62,7 +62,7 @@ Open http://localhost:3000, type a question, watch the progress view. The projec
 1. **intake** infers the brief (level, tone, background, learning goal) from the question. Nothing is asked.
 2. **research** searches, opens pages (reputation-ranked), extracts claims with verbatim quotes, corroborates, finds misconceptions and analogies. Sets the video length from the count of *needed* claims.
 3. **script** writes a seven-beat arc, then scenes with narration / visual direction / claim ids. A *learner* pass and an *expert* pass must both pass; two failures simplify the arc.
-4. **visuals** (per scene, in parallel): narration via Hedra at the house voice and speed → forced alignment → storyboard still with the house reference frame → vision check → clip or animated still → vision check → retry on the next model → demote to a safer visual type.
+4. **visuals** (per scene, in parallel): narration via Hedra at the house voice and speed → word timestamps (OpenAI transcription, matched to the script) → storyboard still with the house reference frame → vision check → clip or animated still → vision check → retry on the next model → demote to a safer visual type.
 5. **assemble**: pacing, factual-integrity and watchability checks, then a Remotion render (local or Lambda), captions, sources end card.
 
 Every Hedra call carries an idempotency key from a hash of its input, so retries never pay twice. Every Hedra output is mirrored to our bucket; both the Hedra asset id and our URL are recorded.
@@ -75,6 +75,8 @@ Every Hedra call carries an idempotency key from a hash of its input, so retries
 | Narrator: David O. on `elevenlabs-multilingual-v2` at 1.1× | `config/house-style.json` → `voice` |
 | Models per visual type (`kling-25-turbo` stills-in-motion, `wan-3-0` clips, `minimax-h3` retry) | `config/house-style.json` → `models` |
 | Scene budget: ~165 wpm, 20–40 s scenes | `packages/schemas/src/index.ts` → `sceneBudget` |
+| Recurring cast (the same things drawn the same way in every scene) | `packages/pipeline/src/stages/script.ts` (`cast`), used in Hedra prompts and scene code |
+| Captions: one sentence or clause at a time, two lines, word highlight from the timestamps | `packages/render/src/captions-layout.ts`, `Captions.tsx` |
 | Video styles and which scene types each offers | `packages/pipeline/src/stages/script.ts` → `visualTypesFor` |
 | Rules for model-written Manim / motion-graphics / three.js code | `packages/pipeline/src/stages/engines.ts` → `MANIM_RULES`, `motionRules`, `threeRules` |
 | Length cap: 3 min (`MAX_VIDEO_SECONDS`); over-long scripts are rewritten, then trimmed, before any media is made | `packages/pipeline/src/stages/script.ts` → `estimateVideoS`, `trimToFit` |
@@ -82,7 +84,7 @@ Every Hedra call carries an idempotency key from a hash of its input, so retries
 
 ## Still to wire up
 
-- **Forced alignment service.** Hedra returns audio + duration only; `ALIGNMENT_URL` expects a WhisperX-class endpoint (`{audio_url, transcript} → {words}`). Without it, words are spread evenly across the clip (fine for captions, not for cue words).
+- **Forced alignment service.** Word timing comes from OpenAI's transcription API (whisper-1 word timestamps, matched to the script). `ALIGNMENT_URL` can point at a WhisperX-class endpoint instead (`{audio_url, transcript} → {words}`). If both fail, timing is estimated from the text (word lengths and punctuation pauses); the caption highlight then drifts a little.
 - **Music bed and SFX.** Helpers exist in `packages/hedra`; the mix step in the composition is not yet written. Plan: a pre-generated bed per tone, ducked under speech.
 - **Auth and library.** `users` table exists; no sign-in yet. Level inference from history reads `pressedSimpler/pressedDeeper` counts.
 - **Internal QA queue.** Videos whose watchability check fell back are recorded in `qa`; a review UI for us is not built.

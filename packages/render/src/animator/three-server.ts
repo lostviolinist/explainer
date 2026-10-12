@@ -34,8 +34,60 @@ const JOBS = resolve(dirname(fileURLToPath(import.meta.url)), "../../.three-jobs
 export type Engine = "three" | "motion";
 const ALLOWED_IMPORTS: Record<Engine, Set<string>> = {
   three: new Set(["react", "three", "@react-three/fiber", "remotion"]),
-  motion: new Set(["react", "remotion", "@remotion/shapes", "@remotion/paths"]),
+  motion: new Set(["react", "remotion", "@remotion/shapes", "@remotion/paths", "./Label"]),
 };
+
+/**
+ * Text helper for motion scenes: an HTML label that sizes itself to its text, so
+ * a pill can never be narrower than the words in it (SVG <text> has no auto-size,
+ * and models guess pill widths). Anchored at (x, y) in frame pixels.
+ */
+const LABEL_TSX = `import React from "react";
+
+type Props = {
+  x: number;
+  y: number;
+  children: React.ReactNode;
+  /** Pill colour; "none" for plain text. */
+  color?: string;
+  ink?: string;
+  size?: number;
+  /** Which point of the label sits at (x, y): its left-middle, centre or right-middle. */
+  anchor?: "start" | "middle" | "end";
+  opacity?: number;
+  scale?: number;
+  weight?: number;
+};
+
+export function Label({ x, y, children, color = "#F2C14E", ink = "#1B2235", size = 44, anchor = "start", opacity = 1, scale = 1, weight = 700 }: Props) {
+  const tx = anchor === "middle" ? "-50%" : anchor === "end" ? "-100%" : "0%";
+  const origin = anchor === "middle" ? "center" : anchor === "end" ? "right center" : "left center";
+  const pill = color !== "none";
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: x,
+        top: y,
+        transform: \`translate(\${tx}, -50%) scale(\${scale})\`,
+        transformOrigin: origin,
+        opacity,
+        padding: pill ? \`\${Math.round(size * 0.22)}px \${Math.round(size * 0.55)}px\` : 0,
+        borderRadius: 999,
+        background: pill ? color : "transparent",
+        color: ink,
+        fontSize: size,
+        fontWeight: weight,
+        lineHeight: 1.15,
+        whiteSpace: "nowrap",
+        fontFamily: "Inter, system-ui, sans-serif",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+`;
 const FORBIDDEN = /\b(fetch|XMLHttpRequest|WebSocket|EventSource|importScripts|eval|Function)\s*\(|\bnew\s+(Worker|Function)\b|\brequire\s*\(|\bimport\s*\(/;
 
 /** Static checks before anything runs: module shape and imports. */
@@ -117,6 +169,7 @@ export async function renderThree(
   const timer = setTimeout(cancel, TIMEOUT_MS);
   try {
     await writeFile(join(dir, "Scene.tsx"), code);
+    if (engine === "motion") await writeFile(join(dir, "Label.tsx"), LABEL_TSX);
     const frames = Math.max(1, Math.round(durationS * FPS));
     let imageName: string | null = null;
     if (engine === "motion" && image) {

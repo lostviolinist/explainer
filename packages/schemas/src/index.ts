@@ -187,10 +187,21 @@ export const Scene = z.object({
 });
 export type Scene = z.infer<typeof Scene>;
 
+/** A recurring thing in the video, drawn the same way in every scene. */
+export const CastMember = z.object({
+  name: z.string(),
+  /** How it's drawn: a simple shape or icon description. */
+  look: z.string(),
+  /** Its accent colour (hex). */
+  color: z.string(),
+});
+export type CastMember = z.infer<typeof CastMember>;
+
 export const ScenePlan = z.object({
   projectId: z.string().uuid(),
   background: Background,
   scenes: z.array(Scene).min(3),
+  cast: z.array(CastMember).default([]),
   /** Results of the learner and expert self-review passes. */
   review: z.object({
     learnerPass: z.object({

@@ -20,13 +20,16 @@ import Ajv from "ajv";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { eq } from "drizzle-orm";
 import { AssetMirror, HedraError, type JobResult } from "@explainer/hedra";
-import { makeFunctions, loadHouseStyle, FallbackAligner, OpenAILLM, HttpAnimator, type Ctx, type Search } from "@explainer/pipeline";
+import { makeFunctions, loadHouseStyle, FallbackAligner, OpenAIAligner, OpenAILLM, HttpAnimator, type Ctx, type Search } from "@explainer/pipeline";
 import { LocalRenderer, FfmpegFrameSampler, remotionFf } from "@explainer/render";
 import { db, schema } from "../src/lib/db";
 import { drizzleStore } from "../src/lib/store";
 
 // SMOKE_DELAY_MS slows every fake call, to watch the progress page; SMOKE_KEEP=1 keeps the project afterwards.
 const DELAY = Number(process.env.SMOKE_DELAY_MS ?? 0);
+// Where the fake transcription puts each word: a lead-in, then one every 0.36 s (the fake voice speaks 2.75 words/s).
+const TRANSCRIBE_LEAD = 0.3;
+const TRANSCRIBE_STEP = 0.36;
 const pause = () => (DELAY ? new Promise((r) => setTimeout(r, DELAY * (0.5 + Math.random()))) : Promise.resolve());
 const env = (k: string, d?: string) => process.env[k] || d || (() => { throw new Error(`${k} is not set`); })();
 const ffmpeg = () => remotionFf;
@@ -137,7 +140,7 @@ function answer(system: string, user: string): unknown {
     const scenes = BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, narration: NARRATION[b], claimIds: ["c1", "c2"], visualDirection: `a sunbeam as a bundle of coloured threads for the ${b}, with air molecules as tiny beads and an eye looking up`, visualType: TYPES[b], targetS: b === "misconception" ? 60 : 12, onScreenTerms: b === "ground" ? ["wavelength"] : [] }));
     // A second core scene as flat motion graphics (Manim in the math style, an animated still without the motion engine).
     scenes.splice(5, 0, { beat: "core", purpose: "show blue bouncing around", narration: MOTION_NARRATION, claimIds: ["c2"], visualDirection: "a sun on the left firing a ray that zig-zags off air molecules into a waiting eye", visualType: "motion", targetS: 12, onScreenTerms: [] });
-    return { scenes };
+    return { scenes, cast: [{ name: "sunbeam", look: "a bundle of coloured threads fanning out from a small sun", color: "#F2C14E" }, { name: "air molecule", look: "a small round blue bead", color: "#8FB8E8" }, { name: "the eye", look: "a simple almond-shaped eye with a dark pupil", color: "#1B2235" }] };
   }
   if (/You will hear the narration/.test(system)) return { goalAnswer: "Air scatters blue light most.", unclearSentences: [], couldMeetGoal: true };
   if (/careful subject expert/.test(system)) return { unsourced: [], overstated: [] };
@@ -291,6 +294,7 @@ export default function Scene() {
 /** Callouts over a still: a ring drawn around one part and a label pill pointing at it. */
 const overlayCode = (name: string, [x0 = 0, y0 = 0, x1 = 0, y1 = 0]: number[]) => `import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { evolvePath } from "@remotion/paths";
+import { Label } from "./Label";
 
 const RING = "M ${x0} ${y0} H ${x1} V ${y1} H ${x0} Z";
 
@@ -300,14 +304,13 @@ export default function Scene() {
   const ring = evolvePath(interpolate(frame, [10, 50], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }), RING);
   const pill = spring({ frame: frame - 40, fps, config: { damping: 14 } });
   return (
-    <svg viewBox="0 0 1920 1080" width="100%" height="100%">
-      <path d="M0 0H1920V1080H0Z M ${x0} ${y0} H ${x1} V ${y1} H ${x0} Z" fill="rgba(27,34,53,0.45)" fillRule="evenodd" opacity={interpolate(frame, [0, 20], [0, 1], { extrapolateRight: "clamp" })} />
-      <path d={RING} fill="none" stroke="#F2C14E" strokeWidth={8} strokeLinejoin="round" strokeDasharray={ring.strokeDasharray} strokeDashoffset={ring.strokeDashoffset} />
-      <g transform={\`translate(${x0} ${Math.max(90, y0 - 80)}) scale(\${pill})\`}>
-        <rect width={${Math.max(220, name.length * 26 + 60)}} height={64} rx={32} fill="#F2C14E" />
-        <text x={30} y={44} fontSize={40} fontWeight={700} fill="#1B2235">${name}</text>
-      </g>
-    </svg>
+    <>
+      <svg viewBox="0 0 1920 1080" width="100%" height="100%">
+        <path d="M0 0H1920V1080H0Z M ${x0} ${y0} H ${x1} V ${y1} H ${x0} Z" fill="rgba(27,34,53,0.45)" fillRule="evenodd" opacity={interpolate(frame, [0, 20], [0, 1], { extrapolateRight: "clamp" })} />
+        <path d={RING} fill="none" stroke="#F2C14E" strokeWidth={8} strokeLinejoin="round" strokeDasharray={ring.strokeDasharray} strokeDashoffset={ring.strokeDashoffset} />
+      </svg>
+      <Label x={${x0}} y={${Math.max(90, y0 - 60)}} scale={pill} opacity={pill}>${name}</Label>
+    </>
   );
 }
 `;
@@ -350,6 +353,22 @@ async function main() {
   const bad: string[] = [];
   const openai = fakeOpenAI(log, bad);
   const server = http.createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/v1/audio/transcriptions") {
+      // Multipart: only the prompt (the script) matters; the "heard" words follow it at fixed times.
+      const chunks: Buffer[] = [];
+      req.on("data", (c) => chunks.push(c));
+      req.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("latin1");
+        const field = (name: string) => new RegExp(`name="${name.replace("[", "\\[").replace("]", "\\]")}"\\r\\n\\r\\n([^]*?)\\r\\n--`).exec(raw)?.[1];
+        if (field("model") !== "whisper-1" || field("response_format") !== "verbose_json" || field("timestamp_granularities[]") !== "word") bad.push("transcription request without whisper-1 word timestamps");
+        if (!/filename="narration\.(mp3|wav)"/.test(raw)) bad.push("transcription request without an audio file");
+        const script = Buffer.from(field("prompt") ?? "", "latin1").toString("utf8");
+        const words = script.split(/\s+/).filter(Boolean).map((w, i) => ({ word: w.replace(/[^A-Za-z0-9']/g, ""), start: +(TRANSCRIBE_LEAD + i * TRANSCRIBE_STEP).toFixed(2), end: +(TRANSCRIBE_LEAD + i * TRANSCRIBE_STEP + 0.3).toFixed(2) }));
+        log.push("llm.transcribe");
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ task: "transcribe", language: "english", duration: words.length * TRANSCRIBE_STEP, text: script, words }));
+      });
+      return;
+    }
     if (req.method === "POST" && req.url === "/v1/responses") {
       let raw = "";
       req.on("data", (c) => (raw += c));
@@ -431,7 +450,8 @@ async function main() {
     search: fakeSearch,
     hedra: hedra as any,
     mirror: new AssetMirror(s3cfg),
-    aligner: new FallbackAligner(null),
+    // Word timing through the real OpenAI aligner, against the fake transcription endpoint above.
+    aligner: new FallbackAligner(new OpenAIAligner("sk-smoke"), (why) => bad.push(`word timing fell back to an estimate: ${why}`)),
     frames: new FfmpegFrameSampler(),
     // Real sandboxes when configured (the Docker stack sets these); otherwise no Manim / 3D scenes.
     animator: new HttpAnimator({ manim: process.env.MANIM_URL || undefined, three: process.env.THREE_URL || undefined, motion: process.env.THREE_URL || undefined }),
@@ -503,6 +523,10 @@ async function main() {
         const clipFrame = Math.max(r, g, b) > 120 && Math.min(r, g, b) < 100;
         if (!stills.length && !clipFrame) f(`clip scene ${s.id}: expected a clip frame at ${t.toFixed(1)}s (clip is ${clipS}s), got rgb(${r},${g},${b})`);
       }
+      // Word timing came from the transcription (lead-in, fixed step), not from an estimate.
+      const w = a.audio.words as { w: string; start: number }[];
+      if (w[0]?.start !== TRANSCRIBE_LEAD || Math.abs((w[1]?.start ?? 0) - TRANSCRIBE_LEAD - TRANSCRIBE_STEP) > 0.001) f(`${s.id}: word timing is not the transcription's (${w.slice(0, 2).map((x) => `${x.w}@${x.start}`).join(" ")})`);
+      if (w.length !== s.narration.split(/\s+/).filter(Boolean).length) f(`${s.id}: ${w.length} word timestamps for ${s.narration.split(/\s+/).length} words`);
       // Code scenes must have their render.
       if (["manim", "three", "motion"].includes(s.visualType) && !a.visuals.some((v: any) => v.role === "animation")) f(`${s.id} (${s.visualType}) has no animation`);
       // With the motion engine, a diagram's still gets callouts animated over it.

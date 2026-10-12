@@ -5,7 +5,7 @@ import { HedraClient, AssetMirror } from "@explainer/hedra";
 import type { ProgressEvent, Stage } from "@explainer/schemas";
 import { OpenAILLM, type LLM } from "./providers/llm.js";
 import { ExaSearch, type Search } from "./providers/search.js";
-import { FallbackAligner, HttpAligner, type Aligner } from "./providers/alignment.js";
+import { FallbackAligner, HttpAligner, OpenAIAligner, type Aligner } from "./providers/alignment.js";
 import type { ArtifactStore } from "./providers/store.js";
 import type { FrameSampler } from "./providers/frames.js";
 import { HttpAnimator, type Animator } from "./providers/animator.js";
@@ -81,7 +81,9 @@ export function ctxFromEnv(store: ArtifactStore, frames: FrameSampler): Ctx {
       secretAccessKey: need("S3_SECRET_ACCESS_KEY"),
       publicBase: need("ASSETS_PUBLIC_BASE"),
     }),
-    aligner: new FallbackAligner(env.ALIGNMENT_URL ? new HttpAligner(env.ALIGNMENT_URL) : null),
+    // Word timing for captions and cues: a WhisperX-class service if configured, else OpenAI's
+    // transcription (same key), else estimated from the text.
+    aligner: new FallbackAligner(env.ALIGNMENT_URL ? new HttpAligner(env.ALIGNMENT_URL) : new OpenAIAligner(need("OPENAI_API_KEY")), (why) => console.warn(`[align] estimated word timing: ${why}`)),
     frames,
     // The Remotion sandbox (THREE_URL) renders both 3D and flat motion graphics.
     animator: new HttpAnimator({ manim: env.MANIM_URL || undefined, three: env.THREE_URL || undefined, motion: env.THREE_URL || undefined }),
