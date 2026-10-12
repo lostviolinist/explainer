@@ -46,6 +46,7 @@ h1 .grad, .grad-text { background: var(--grad); -webkit-background-clip: text; b
 h2 { font-size: 18px; margin: 0; letter-spacing: -0.01em; }
 .sub { color: var(--muted); font-size: 18px; line-height: 1.5; margin: 0 0 36px; max-width: 620px; }
 .small { color: var(--muted); font-size: 14px; }
+.version { margin-top: 56px; color: var(--muted); opacity: 0.6; font-size: 12px; font-variant-numeric: tabular-nums; }
 .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
 .count { font-variant-numeric: tabular-nums; color: var(--ink); background: var(--surface-2); border-radius: 999px; padding: 1px 8px; font-size: 11px; letter-spacing: 0; }
 .back { margin: 0 0 18px; font-size: 14px; color: var(--muted); }

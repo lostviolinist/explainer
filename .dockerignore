@@ -4,7 +4,11 @@
 **/dist
 **/out
 **/*.tsbuildinfo
-.git
+# Only what the build needs to stamp the version (see apps/web/next.config.mjs); no objects.
+.git/*
+!.git/HEAD
+!.git/refs
+!.git/packed-refs
 .env
 **/.env
 .env.local

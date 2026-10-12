@@ -26,6 +26,8 @@ docker compose up --build
 
 App: http://localhost:3000 · Inngest runs (step-by-step logs and errors): http://localhost:8288. Database and storage settings in `.env` are ignored here; the compose file points them at its own services. `docker compose down -v` wipes the data.
 
+**Which version is running?** The footer of the home page (and `curl localhost:3000/api/version`) shows the git commit, branch and build time the site was built from; `git log -1` in your checkout should show the same commit. If it doesn't, the image wasn't rebuilt (`docker compose up --build` rebuilds it), or something other than the Docker stack is serving port 3000: `docker compose ps` lists the stack's containers, and on a Mac `lsof -nP -iTCP:3000 -sTCP:LISTEN` shows whatever process owns the port (a leftover `pnpm dev`, say; `kill` it, or a second copy of the stack in another folder, `docker ps` shows it).
+
 The home page checks the setup (keys, credits, storage, renderer, animators) quietly in the background; visitors never see it unless something is broken, in which case the form is held with a plain message. To see every check, open http://localhost:3000/?setup (in development it's always shown). A run is also checked server-side before it starts.
 
 ## Video styles and animation sandboxes

@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { AskForm } from "./AskForm";
 import { db, schema } from "@/lib/db";
 import { preflight } from "@/lib/preflight";
+import { version } from "@/lib/version";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,9 @@ export default async function Home() {
           </div>
         </div>
       )}
+      <footer className="version" title="Which code this site is running: git commit, branch, build time">
+        {version.label}
+      </footer>
     </main>
   );
 }
