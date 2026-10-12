@@ -38,10 +38,16 @@ const STYLES: { id: Style; name: string; blurb: string; icon: React.ReactNode }[
   },
 ];
 
-/** The question box, gated on the setup check so a run can't fail on a missing key or credits. */
+/**
+ * The question box. The setup check runs quietly in the background: visitors
+ * never see it unless something is actually broken (then the form is held
+ * with a plain message). Details for whoever runs the site: open /?setup, or
+ * run in development. The server action checks again before starting a run.
+ */
 export function AskForm() {
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [details, setDetails] = useState(process.env.NODE_ENV !== "production");
 
   const load = useCallback((refresh: boolean) => {
     setChecks(null);
@@ -51,27 +57,31 @@ export function AskForm() {
       .then((d: { checks: Check[] }) => setChecks(d.checks))
       .catch((e: Error) => setError(e.message));
   }, []);
-  useEffect(() => load(false), [load]);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("setup")) setDetails(true);
+    load(false);
+  }, [load]);
 
   const [style, setStyle] = useState<Style>("illustrated");
-  const problems = checks?.filter((c) => c.status !== "ok") ?? [];
-  const blocked = !checks || checks.some((c) => c.status === "fail");
-  const mathReady = checks?.find((c) => c.name === MANIM_CHECK)?.status === "ok";
+  const failing = checks?.filter((c) => c.status === "fail") ?? [];
+  const warnings = checks?.filter((c) => c.status === "warn") ?? [];
+  const blocked = failing.length > 0;
+  const mathReady = checks === null || checks.find((c) => c.name === MANIM_CHECK)?.status === "ok";
   useEffect(() => {
-    if (checks && !mathReady && style === "math") setStyle("illustrated");
-  }, [checks, mathReady, style]);
+    if (!mathReady && style === "math") setStyle("illustrated");
+  }, [mathReady, style]);
 
   return (
     <>
       <form action={ask}>
         <div className="ask">
           <input name="question" placeholder="why do leaves change colour in autumn?" autoFocus required minLength={3} maxLength={500} />
-          <button type="submit" disabled={blocked} title={blocked ? "Waiting for the setup check" : undefined}>Explain it</button>
+          <button type="submit" disabled={blocked} title={blocked ? "Not available right now" : undefined}>Explain it</button>
         </div>
         <input type="hidden" name="style" value={style} />
         <div className="styles" role="radiogroup" aria-label="Video style">
           {STYLES.map((s) => {
-            const unavailable = s.id === "math" && checks !== null && !mathReady;
+            const unavailable = s.id === "math" && !mathReady;
             return (
               <button
                 key={s.id}
@@ -80,40 +90,47 @@ export function AskForm() {
                 aria-checked={style === s.id}
                 className={`style-card${style === s.id ? " selected" : ""}`}
                 disabled={unavailable}
-                title={unavailable ? "The Manim animator isn't running (see the setup check)" : undefined}
+                title={unavailable ? "Not available right now" : undefined}
                 onClick={() => setStyle(s.id)}
               >
                 {s.icon}
                 <span>
                   <b>{s.name}</b>
-                  <span className="small">{unavailable ? "Unavailable: the Manim animator isn't running" : s.blurb}</span>
+                  <span className="small">{unavailable ? "Not available right now" : s.blurb}</span>
                 </span>
               </button>
             );
           })}
         </div>
       </form>
-      <div className="setup">
-        {!checks && !error && <span className="small">Checking your setup (OpenAI, Exa, Hedra, storage, renderer, animators)…</span>}
-        {error && <span className="small">Couldn't run the setup check: {error}</span>}
-        {checks && problems.length === 0 && <span className="small"><span className="ok">✓</span> Setup check passed: {checks.map((c) => c.name).join(", ")}</span>}
-        {problems.length > 0 && (
-          <div className="setup-problems">
-            <strong>{blocked ? "Fix these before generating a video" : "Heads up"}</strong>
-            <ul>
-              {problems.map((c) => (
-                <li key={c.name} className={c.status}>
-                  <b>{c.name}</b>: {c.detail}
-                  {c.fix && <div className="small">{c.fix}</div>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {(checks || error) && (
-          <button type="button" className="btn ghost small-btn" onClick={() => load(true)}>Check again</button>
-        )}
-      </div>
+      {(blocked || details) && (
+        <div className="setup">
+          {blocked && !details && (
+            <div className="setup-problems">
+              <strong>We can't make videos right now</strong>
+              <div className="small">A service we rely on is unavailable. Please try again in a few minutes.</div>
+            </div>
+          )}
+          {details && !checks && !error && <span className="small">Checking the setup (OpenAI, Exa, Hedra, storage, renderer, animators)…</span>}
+          {details && error && <span className="small">Couldn't run the setup check: {error}</span>}
+          {details && checks && (
+            <div className={`setup-problems${blocked ? "" : " setup-ok"}`}>
+              <strong>{blocked ? "Fix these before generating a video" : warnings.length ? "Setup check passed, with notes" : "Setup check passed"}</strong>
+              <ul>
+                {checks.map((c) => (
+                  <li key={c.name} className={c.status}>
+                    <b>{c.status === "ok" ? "✓ " : c.status === "warn" ? "△ " : "✕ "}{c.name}</b>: {c.detail}
+                    {c.fix && c.status !== "ok" && <div className="small">{c.fix}</div>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {details && (checks || error) && (
+            <button type="button" className="btn ghost small-btn" onClick={() => load(true)}>Check again</button>
+          )}
+        </div>
+      )}
     </>
   );
 }

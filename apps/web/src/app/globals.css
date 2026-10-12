@@ -85,6 +85,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none !importan
 .setup-problems li { margin: 8px 0; overflow-wrap: anywhere; line-height: 1.45; }
 .setup-problems li.warn b { color: var(--amber); }
 .setup-problems li.fail b { color: var(--red); }
+.setup-problems.setup-ok { border-color: rgba(120, 200, 140, 0.35); background: rgba(120, 200, 140, 0.06); }
+.setup-problems li.ok b { color: var(--green); }
 .recent { margin-top: 40px; }
 .recent .chips { margin-top: 10px; }
 .recent a { display: inline-block; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; background: var(--surface); color: var(--ink); font-size: 14px; transition: border-color .15s; }

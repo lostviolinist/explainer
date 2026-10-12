@@ -7,6 +7,7 @@ import { z } from "zod";
 import { inngest } from "@explainer/pipeline";
 import { VideoStyle } from "@explainer/schemas";
 import { db, schema } from "@/lib/db";
+import { preflight } from "@/lib/preflight";
 
 const { projects, progressEvents } = schema;
 const slug = () => randomBytes(6).toString("base64url");
@@ -16,6 +17,9 @@ const Ask = z.object({ question: z.string().trim().min(3).max(500), style: Video
 /** The one user decision: what do you want to understand? */
 export async function ask(formData: FormData) {
   const { question, style } = Ask.parse({ question: formData.get("question"), style: formData.get("style") });
+  // Never start a run that would fail on a missing key, credits or service; the check is cached, so this is quick.
+  const checks = await preflight();
+  if (checks.some((c) => c.status === "fail")) redirect("/?setup");
   const [project] = await db.insert(projects).values({ question, style, shareSlug: slug() }).returning({ id: projects.id });
   await db.insert(progressEvents).values({ projectId: project!.id, stage: "queued", message: "starting", fraction: 0 });
   await inngest.send({ name: "project/created", data: { projectId: project!.id, question, style } });

@@ -26,6 +26,8 @@ docker compose up --build
 
 App: http://localhost:3000 · Inngest runs (step-by-step logs and errors): http://localhost:8288. Database and storage settings in `.env` are ignored here; the compose file points them at its own services. `docker compose down -v` wipes the data.
 
+The home page checks the setup (keys, credits, storage, renderer, animators) quietly in the background; visitors never see it unless something is broken, in which case the form is held with a plain message. To see every check, open http://localhost:3000/?setup (in development it's always shown). A run is also checked server-side before it starts.
+
 ## Video styles and animation sandboxes
 
 The home page offers two styles:

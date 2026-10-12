@@ -2,10 +2,13 @@ import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { AskForm } from "./AskForm";
 import { db, schema } from "@/lib/db";
+import { preflight } from "@/lib/preflight";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  // Warm the setup check while the visitor types, so submitting doesn't wait for it.
+  void preflight().catch(() => undefined);
   const recent = await db
     .select({ id: schema.projects.id, question: schema.projects.question })
     .from(schema.projects)
