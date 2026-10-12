@@ -30,6 +30,7 @@ export const sampleProps: ExplainerProps = {
       words: evenWords(narration1, 4.2),
       visuals: [{ asset: { url: `${base}/sample/black-hole.jpg`, contentType: "image/jpeg", durationMs: null }, role: "still" }],
       onScreenTerms: [],
+      sounds: [],
     },
     {
       id: "s2",
@@ -47,8 +48,11 @@ export const sampleProps: ExplainerProps = {
       words: evenWords(narration2, 7.1),
       visuals: [{ asset: { url: `${base}/sample/black-hole.jpg`, contentType: "image/jpeg", durationMs: null }, role: "background" }],
       onScreenTerms: ["gravity"],
+      sounds: [],
     },
   ],
+  music: null,
+  sfx: {},
   sources: [
     { title: "Gravitational lensing", domain: "nasa.gov", url: "https://science.nasa.gov" },
     { title: "General relativity", domain: "britannica.com", url: "https://www.britannica.com" },

@@ -21,14 +21,14 @@
     "dark": { "assetId": "asset_e878c319-59c0-4bf0-affc-0fbf0fb9866c", "subject": "black hole bending starlight, detailed" }
   },
   "voice": {
-    "$comment": "House narrator. multilingual-v2 chosen over v3 because duration is predictable from word count (v3 varied 23-28s on the same line).",
-    "model": "elevenlabs-multilingual-v2",
+    "$comment": "House narrator. elevenlabs-v3 for expressive delivery (audio tags chosen per scene and checked word for word); multilingual-v2 (steadier, predictable pace) when v3 refuses. Word timing comes from transcription, so v3's pace variance no longer matters for captions.",
+    "model": "elevenlabs-v3",
+    "fallbackModel": "elevenlabs-multilingual-v2",
     "voiceId": "voice_b716c1fa-74a9-40e1-adbe-442583af907c",
     "name": "David O.",
     "speed": 1.1,
     "deeperSpeed": 1.2,
-    "wordsPerMinute": 165,
-    "playfulModel": "elevenlabs-v3"
+    "wordsPerMinute": 165
   },
   "models": {
     "$comment": "Allowlist per visual type, in retry order. From the 2026-10-07 bake-off.",

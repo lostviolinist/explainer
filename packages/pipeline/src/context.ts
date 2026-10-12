@@ -22,7 +22,7 @@ export interface HouseStyle {
     speed: number;
     deeperSpeed: number;
     wordsPerMinute: number;
-    playfulModel: string;
+    fallbackModel: string;
   };
   models: Record<string, string[]>;
   clip: { defaultDurationMs: number; maxDurationMs: number; resolution: string; animatedStillResolution: string };

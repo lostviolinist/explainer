@@ -16,7 +16,7 @@
  * Chrome. Run in a container with no secrets and no internet.
  */
 import http from "node:http";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,60 +34,12 @@ const JOBS = resolve(dirname(fileURLToPath(import.meta.url)), "../../.three-jobs
 export type Engine = "three" | "motion";
 const ALLOWED_IMPORTS: Record<Engine, Set<string>> = {
   three: new Set(["react", "three", "@react-three/fiber", "remotion"]),
-  motion: new Set(["react", "remotion", "@remotion/shapes", "@remotion/paths", "./Label"]),
+  motion: new Set(["react", "remotion", "@remotion/shapes", "@remotion/paths", "./Kit", "./Label"]),
 };
+// The flat motion toolkit (see kit/Kit.tsx), copied into every motion job.
+const KIT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "kit");
+const KIT_FILES = ["Kit.tsx", "Label.tsx"];
 
-/**
- * Text helper for motion scenes: an HTML label that sizes itself to its text, so
- * a pill can never be narrower than the words in it (SVG <text> has no auto-size,
- * and models guess pill widths). Anchored at (x, y) in frame pixels.
- */
-const LABEL_TSX = `import React from "react";
-
-type Props = {
-  x: number;
-  y: number;
-  children: React.ReactNode;
-  /** Pill colour; "none" for plain text. */
-  color?: string;
-  ink?: string;
-  size?: number;
-  /** Which point of the label sits at (x, y): its left-middle, centre or right-middle. */
-  anchor?: "start" | "middle" | "end";
-  opacity?: number;
-  scale?: number;
-  weight?: number;
-};
-
-export function Label({ x, y, children, color = "#F2C14E", ink = "#1B2235", size = 44, anchor = "start", opacity = 1, scale = 1, weight = 700 }: Props) {
-  const tx = anchor === "middle" ? "-50%" : anchor === "end" ? "-100%" : "0%";
-  const origin = anchor === "middle" ? "center" : anchor === "end" ? "right center" : "left center";
-  const pill = color !== "none";
-  return (
-    <div
-      style={{
-        position: "absolute",
-        left: x,
-        top: y,
-        transform: \`translate(\${tx}, -50%) scale(\${scale})\`,
-        transformOrigin: origin,
-        opacity,
-        padding: pill ? \`\${Math.round(size * 0.22)}px \${Math.round(size * 0.55)}px\` : 0,
-        borderRadius: 999,
-        background: pill ? color : "transparent",
-        color: ink,
-        fontSize: size,
-        fontWeight: weight,
-        lineHeight: 1.15,
-        whiteSpace: "nowrap",
-        fontFamily: "Inter, system-ui, sans-serif",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-`;
 const FORBIDDEN = /\b(fetch|XMLHttpRequest|WebSocket|EventSource|importScripts|eval|Function)\s*\(|\bnew\s+(Worker|Function)\b|\brequire\s*\(|\bimport\s*\(/;
 
 /** Static checks before anything runs: module shape and imports. */
@@ -99,25 +51,21 @@ export function checkCode(code: string, engine: Engine = "three"): string | null
   }
   const bad = code.match(FORBIDDEN);
   if (bad) return `"${bad[0].trim()}" is not allowed: the scene must not load anything or run dynamic code.`;
+  if (engine === "motion" && !/<Stage[\s>/]/.test(code)) return 'The scene must be wrapped in <Stage> from "./Kit" (the camera and the still live there).';
   return null;
 }
 
-const motionRoot = (durationInFrames: number, background: string, image: string | null) => `import { AbsoluteFill, Composition, Img, interpolate, registerRoot, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+const motionRoot = (durationInFrames: number, background: string, image: string | null) => `import { AbsoluteFill, Composition, registerRoot, staticFile } from "remotion";
+import { StillProvider } from "./Kit";
 import Scene from "./Scene";
 
+// The Stage inside the scene draws the still (under the camera, so callouts move with it).
 function Frame() {
-  const frame = useCurrentFrame();
-  const { durationInFrames } = useVideoConfig();
-  // The still and the overlay zoom together, so callouts stay on the parts they point at.
-  const zoom = ${image ? "interpolate(frame, [0, durationInFrames], [1, 1.06])" : "1"};
   return (
-    <AbsoluteFill style={{ backgroundColor: ${JSON.stringify(background)}, overflow: "hidden" }}>
-      <AbsoluteFill style={{ transform: \`scale(\${zoom})\` }}>
-        ${image ? `<Img src={staticFile(${JSON.stringify(image)})} style={{ width: "100%", height: "100%", objectFit: "cover" }} />` : ""}
-        <AbsoluteFill style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
-          <Scene />
-        </AbsoluteFill>
-      </AbsoluteFill>
+    <AbsoluteFill style={{ backgroundColor: ${JSON.stringify(background)}, overflow: "hidden", fontFamily: "Inter, system-ui, sans-serif" }}>
+      <StillProvider href={${image ? `staticFile(${JSON.stringify(image)})` : "null"}}>
+        <Scene />
+      </StillProvider>
     </AbsoluteFill>
   );
 }
@@ -169,7 +117,7 @@ export async function renderThree(
   const timer = setTimeout(cancel, TIMEOUT_MS);
   try {
     await writeFile(join(dir, "Scene.tsx"), code);
-    if (engine === "motion") await writeFile(join(dir, "Label.tsx"), LABEL_TSX);
+    if (engine === "motion") for (const f of KIT_FILES) await copyFile(join(KIT_DIR, f), join(dir, f));
     const frames = Math.max(1, Math.round(durationS * FPS));
     let imageName: string | null = null;
     if (engine === "motion" && image) {

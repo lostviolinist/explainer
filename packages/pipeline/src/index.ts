@@ -11,3 +11,4 @@ export * from "./stages/research.js";
 export * from "./stages/script.js";
 export * from "./stages/visuals.js";
 export * from "./stages/assemble.js";
+export * from "./stages/library.js";

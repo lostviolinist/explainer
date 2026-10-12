@@ -81,6 +81,8 @@ const RULES: Record<string, Rule> = {
   "minimax-h3": { allowed: ["num_outputs", "prompt", "resolution", "duration_ms", "start_image", "end_image", "aspect_ratio", "images", "videos", "audios"], required: ["duration_ms", "prompt", "resolution"], enums: { resolution: ["480p", "768p", "2K", "4K"], duration_ms: range(5000, 15000, 1000) }, max: { prompt: 7000, images: 5 } },
   "elevenlabs-multilingual-v2": { allowed: ["text", "stability", "speed", "language", "voice_id"], required: ["text", "voice_id"], enums: { language: LANG }, max: { text: 10000 }, range: { speed: [0.7, 1.2], stability: [0, 1] } },
   "elevenlabs-v3": { allowed: ["text", "stability", "speed", "language", "voice_id"], required: ["text", "voice_id"], enums: { language: LANG }, max: { text: 5000 }, range: { speed: [0.7, 1.2], stability: [0, 1] } },
+  "elevenlabs-music": { allowed: ["prompt", "duration_ms", "lyrics", "force_instrumental"], required: ["duration_ms", "prompt"], range: { duration_ms: [3000, 600000] } },
+  "elevenlabs-sound-effects": { allowed: ["text", "duration_ms", "prompt_influence", "loop"], required: ["duration_ms", "text"], range: { duration_ms: [500, 30000], prompt_influence: [0, 1] } },
 };
 
 function violations(model: string, input: Record<string, unknown>): string[] {
@@ -143,6 +145,7 @@ function answer(system: string, user: string): unknown {
     return { scenes, cast: [{ name: "sunbeam", look: "a bundle of coloured threads fanning out from a small sun", color: "#F2C14E" }, { name: "air molecule", look: "a small round blue bead", color: "#8FB8E8" }, { name: "the eye", look: "a simple almond-shaped eye with a dark pupil", color: "#1B2235" }] };
   }
   if (/You will hear the narration/.test(system)) return { goalAnswer: "Air scatters blue light most.", unclearSentences: [], couldMeetGoal: true };
+  if (/expressive narrator/.test(system)) return { text: `[curious] ${user.replace(/\. /, "... ")}` };
   if (/careful subject expert/.test(system)) return { unsourced: [], overstated: [] };
   if (/You write generation prompts/.test(system)) {
     const type = /\(([a-z-]+), ([a-z-]+)\)/.exec(user)?.[2];
@@ -156,13 +159,15 @@ function answer(system: string, user: string): unknown {
   if (/You write Manim Community Edition code/.test(system)) {
     // The hook's first attempt is broken, to exercise the fix loop.
     const broken = /\(hook\)/.test(user) && !/YOUR PREVIOUS CODE FAILED/.test(user);
-    return { code: broken ? MANIM_CODE.replace("Create(axes)", "Creat(axes)") : MANIM_CODE };
+    return { code: broken ? MANIM_CODE.replace("Create(axes)", "Creat(axes)") : MANIM_CODE, sounds: [{ at: 1, kind: "whoosh" }, { at: 2.5, kind: "pop" }] };
   }
-  if (/You write a React Three Fiber scene/.test(system)) return { code: THREE_CODE };
-  if (/You write a 2D motion-graphics scene/.test(system)) {
+  if (/You write a React Three Fiber scene/.test(system)) return { code: THREE_CODE, sounds: [] };
+  if (/plan the shots/.test(system)) return { shots: [{ at: 0.2, action: "the sun grows in on the left" }, { at: 1.5, action: "a ray draws on, bouncing off two molecules, to the eye" }, { at: 3, action: "dots flow along the ray" }] };
+  if (/motion-graphics module/.test(system)) {
+    if (!/Shot list/.test(user)) throw new Error("motion code was asked for without a shot list");
     // Overlay mode lists the still's parts in pixels; point at the first one.
     const box = /OVERLAY MODE[\s\S]*?- ([^:\n]+): \[(\d+), (\d+), (\d+), (\d+)\]/.exec(system);
-    return { code: box ? overlayCode(box[1]!, box.slice(2, 6).map(Number)) : MOTION_CODE };
+    return { code: box ? overlayCode(box[1]!, box.slice(2, 6).map(Number)) : MOTION_CODE, sounds: [{ at: 0.3, kind: "pop" }, { at: 1.6, kind: "whoosh" }] };
   }
   if (/Final transcript check/.test(system)) return { driftedSentences: [] };
   if (/You are the intended learner/.test(system)) return { goalAnswer: "Blue scatters most.", couldMeetGoal: true, confusingScenes: [] };
@@ -262,55 +267,38 @@ export default function Scene() {
 }
 `;
 
-const MOTION_CODE = `import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { evolvePath, getLength, getPointAtLength } from "@remotion/paths";
-import { makeCircle } from "@remotion/shapes";
+const MOTION_CODE = `import { Stage, Shape, Icon, Label, Move, Dots, circle, PALETTE } from "./Kit";
 
 const RAY = "M 420 420 L 800 300 L 1050 560 L 1420 400";
 
 export default function Scene() {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const sun = spring({ frame, fps, config: { damping: 14 } });
-  const t = interpolate(frame, [20, 110], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const draw = evolvePath(t, RAY);
-  const photon = getPointAtLength(RAY, t * getLength(RAY));
-  const { path } = makeCircle({ radius: 110 });
   return (
-    <svg viewBox="0 0 1920 1080" width="100%" height="100%">
-      <g transform="translate(200 310)">
-        <path d={path} fill="#F2C14E" style={{ transformBox: "fill-box", transformOrigin: "center", transform: \`scale(\${sun})\` }} />
-      </g>
-      {[[800, 300], [1050, 560]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r={28} fill="#8FB8E8" opacity={sun} />)}
-      <path d={RAY} fill="none" stroke="#4A7FD0" strokeWidth={8} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={draw.strokeDasharray} strokeDashoffset={draw.strokeDashoffset} />
-      <circle cx={photon.x} cy={photon.y} r={16} fill="#E4573D" />
-      <ellipse cx={1500} cy={400} rx={80} ry={46} fill="none" stroke="#1B2235" strokeWidth={8} />
-      <circle cx={1500} cy={400} r={22} fill="#1B2235" />
-    </svg>
+    <Stage camera={[{ at: 2.2, x: 900, y: 430, zoom: 1.3, over: 1.5 }, { at: 4.5, x: 960, y: 540, zoom: 1, over: 1.2 }]}>
+      <Icon name="sun" x={300} y={420} size={220} stroke={PALETTE.yellow} fill={PALETTE.yellow} at={0.2} over={1} />
+      <Label x={300} y={600} anchor="middle" at={0.8}>Sun</Label>
+      <Icon name="eye" x={1520} y={400} size={180} at={0.6} />
+      <Shape d={circle(800, 300, 28)} fill={PALETTE.blue} at={1.0} enter="grow" over={0.5} />
+      <Shape d={circle(1050, 560, 28)} fill={PALETTE.blue} at={1.2} enter="grow" over={0.5} />
+      <Shape d={RAY} stroke="#4A7FD0" at={1.5} over={1.5} />
+      <Move path={RAY} at={1.5} over={1.5}>
+        <Shape d={circle(420, 420, 16)} fill={PALETTE.red} at={1.5} enter="pop" over={0.3} />
+      </Move>
+      <Dots along={RAY} count={5} at={3} />
+    </Stage>
   );
 }
 `;
 
-/** Callouts over a still: a ring drawn around one part and a label pill pointing at it. */
-const overlayCode = (name: string, [x0 = 0, y0 = 0, x1 = 0, y1 = 0]: number[]) => `import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { evolvePath } from "@remotion/paths";
-import { Label } from "./Label";
-
-const RING = "M ${x0} ${y0} H ${x1} V ${y1} H ${x0} Z";
+/** Callouts over a still: a spotlight and a ring on one part, with its label. */
+const overlayCode = (name: string, [x0 = 0, y0 = 0, x1 = 0, y1 = 0]: number[]) => `import { Stage, Circumscribe, Highlight, Label } from "./Kit";
 
 export default function Scene() {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const ring = evolvePath(interpolate(frame, [10, 50], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }), RING);
-  const pill = spring({ frame: frame - 40, fps, config: { damping: 14 } });
   return (
-    <>
-      <svg viewBox="0 0 1920 1080" width="100%" height="100%">
-        <path d="M0 0H1920V1080H0Z M ${x0} ${y0} H ${x1} V ${y1} H ${x0} Z" fill="rgba(27,34,53,0.45)" fillRule="evenodd" opacity={interpolate(frame, [0, 20], [0, 1], { extrapolateRight: "clamp" })} />
-        <path d={RING} fill="none" stroke="#F2C14E" strokeWidth={8} strokeLinejoin="round" strokeDasharray={ring.strokeDasharray} strokeDashoffset={ring.strokeDashoffset} />
-      </svg>
-      <Label x={${x0}} y={${Math.max(90, y0 - 60)}} scale={pill} opacity={pill}>${name}</Label>
-    </>
+    <Stage>
+      <Highlight x={${x0}} y={${y0}} w={${x1 - x0}} h={${y1 - y0}} at={0.3} until={3.5} />
+      <Circumscribe x={${x0}} y={${y0}} w={${x1 - x0}} h={${y1 - y0}} at={0.5} hold={2.5} />
+      <Label x={${x0}} y={${Math.max(90, y0 - 60)}} at={1.2}>${name}</Label>
+    </Stage>
   );
 }
 `;
@@ -343,6 +331,18 @@ const fakeSearch: Search = {
     return { url, title: TITLES[url] ?? url, text: "Sunlight contains all visible wavelengths. Air molecules scatter shorter wavelengths more strongly. ".repeat(20) };
   },
 };
+
+/** RMS level (0–1) of a stretch of a video's audio, via a mono 8 kHz WAV (Remotion's ffmpeg has no raw PCM muxer). */
+async function audioRms(video: string, fromS: number, lengthS: number, wavPath: string): Promise<number> {
+  await ffmpeg()("ffmpeg", ["-v", "error", "-ss", fromS.toFixed(2), "-t", String(lengthS), "-i", video, "-vn", "-f", "wav", "-acodec", "pcm_s16le", "-ac", "1", "-ar", "8000", "-y", wavPath]);
+  const buf = readFileSync(wavPath);
+  const data = buf.indexOf("data");
+  const start = data < 0 ? 44 : data + 8;
+  const samples = new Int16Array(buf.buffer, buf.byteOffset + start, Math.floor((buf.byteLength - start) / 2));
+  let acc = 0;
+  for (const v of samples) acc += v * v;
+  return Math.sqrt(acc / Math.max(1, samples.length)) / 32768;
+}
 
 // ------------------------------------------------------------------ run ---
 
@@ -414,8 +414,14 @@ async function main() {
       const id = `asset_00000000-0000-4000-8000-${String(++jobs).padStart(12, "0")}`;
       log.push(`hedra ${model}`);
       let out: { path: string; type: string; w: number | null; h: number | null; ms: number | null };
-      if (model.startsWith("elevenlabs")) {
-        const s = String(input.text).split(/\s+/).length / 2.75;
+      if (model === "elevenlabs-music" || model === "elevenlabs-sound-effects") {
+        // Library audio: a tone of the requested length (the bed is a few minutes long).
+        const s = (input.duration_ms as number) / 1000;
+        media.set(`/${id}.wav`, { bytes: wav(s), type: "audio/wav" });
+        out = { path: `/${id}.wav`, type: "audio/wav", w: null, h: null, ms: Math.round(s * 1000) };
+      } else if (model.startsWith("elevenlabs")) {
+        // The voice reads the script; delivery tags and pauses take no words.
+        const s = String(input.text).replace(/\[[a-z ]+\]/gi, "").replace(/\.\.\./g, "").split(/\s+/).filter(Boolean).length / 2.75;
         media.set(`/${id}.wav`, { bytes: wav(s), type: "audio/wav" });
         out = { path: `/${id}.wav`, type: "audio/wav", w: null, h: null, ms: Math.round(s * 1000) };
       } else if (RULES[model]!.required.includes("duration_ms")) {
@@ -504,6 +510,14 @@ async function main() {
 
     const rows = await db.select().from(schema.artifacts).where(eq(schema.artifacts.projectId, projectId));
     const plan = rows.filter((a) => a.kind === "plan").at(-1)!.data as any;
+    const render = rows.filter((a) => a.kind === "render").at(-1)?.data as any;
+    const sound = render?.qa?.find((q: any) => q.check === "sound");
+    if (!sound?.passed) f(`music bed or sound kit missing: ${sound?.notes ?? "no sound check"}`);
+    if (!/end-aligned/.test(sound?.notes ?? "")) f(`music is not end-aligned: ${sound?.notes}`);
+    // The end card has no narration: with the bed under it, the last seconds are not silent.
+    const rms = await audioRms(video, probed - 4, 3, join(dir, `tail-${style}.wav`));
+    console.log(`  end card audio level: ${(20 * Math.log10(Math.max(rms, 1e-6))).toFixed(1)} dBFS`);
+    if (rms < 0.005) f(`the end card is silent (rms ${rms.toFixed(4)}): no music bed in the mix`);
     const assets = rows.filter((a) => a.kind === "sceneAssets").map((a) => a.data as any);
     let offset = 0;
     for (const s of plan.scenes) {

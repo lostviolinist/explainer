@@ -14,12 +14,12 @@
  * All generated assets are mirrored; both the Hedra asset id and our URL are kept.
  */
 import { z } from "zod";
-import { AnimSpec, RenderSpec, SceneAssets, QaResult, VIDEO_TIMING, type Scene, type ScenePlan, type Brief, type MirroredAsset, type CastMember } from "@explainer/schemas";
+import { AnimSpec, RenderSpec, SceneAssets, QaResult, SoundCue, VIDEO_TIMING, type Scene, type ScenePlan, type Brief, type MirroredAsset, type CastMember } from "@explainer/schemas";
 import { generateStill, animateStill, generateClip, generateSpeech, HedraError, type GenOutcome } from "@explainer/hedra";
 import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
 import type { Engine, OverlayImage } from "../providers/animator.js";
-import { MANIM_RULES, threeRules, motionRules, narrationTimeline, stripFences, fallbackManim, type StillPart } from "./engines.js";
+import { MANIM_RULES, SHOT_LIST_RULES, threeRules, motionRules, narrationTimeline, stripFences, fallbackManim, type StillPart } from "./engines.js";
 
 export const Planned = z.object({
   hedraPrompt: z.string().nullable(),
@@ -42,8 +42,30 @@ const DEMOTE: Partial<Record<Scene["visualType"], Scene["visualType"]>> = {
   "still-animated": "diagram",
 };
 
-/** What the model returns for a code scene. */
-export const SceneCode = z.object({ code: z.string() });
+/** What the model returns for a code scene: the code, and the sound effects it wants, cued in seconds. */
+export const SceneCode = z.object({ code: z.string(), sounds: z.array(SoundCue) });
+
+/** The shots of a motion scene, planned before the code is written. */
+export const ShotList = z.object({ shots: z.array(z.object({ at: z.number(), action: z.string() })) });
+
+/** Sound cues in order, inside the scene, at most eight and not on top of each other. */
+export function tidySounds(sounds: SoundCue[], durationS: number): SoundCue[] {
+  const out: SoundCue[] = [];
+  for (const s of [...sounds].sort((a, b) => a.at - b.at)) {
+    if (!(s.at >= 0 && s.at <= durationS)) continue;
+    if (out.length && s.at - out.at(-1)!.at < 0.4) continue;
+    out.push({ at: +s.at.toFixed(2), kind: s.kind });
+    if (out.length === 8) break;
+  }
+  return out;
+}
+
+/** Where the frame sampler takes its frames (mirrors packages/render sampleTimes), so a reviewer knows the times. */
+const sampleTimes = (durationS: number, count: number) => {
+  const inset = Math.min(0.5, durationS / 10);
+  const span = durationS - 2 * inset;
+  return count === 1 ? [inset + span / 2] : Array.from({ length: count }, (_, i) => inset + (span * i) / (count - 1));
+};
 
 const isCodeScene = (t: Scene["visualType"]): t is Engine => t === "manim" || t === "three" || t === "motion";
 
@@ -117,12 +139,47 @@ async function scoreFrames(ctx: Ctx, scene: Scene, imageUrls: string[]) {
   });
 }
 
+/** What the delivery pass returns: the script with audio tags. */
+export const Delivery = z.object({ text: z.string() });
+
+/** ElevenLabs v3 audio tags we allow (documented ones that colour delivery without adding sounds). */
+export const DELIVERY_TAGS = ["curious", "excited", "thoughtful", "whispers", "sighs", "surprised", "cheerfully", "seriously", "amazed", "mischievously"];
+
+/** The script without its delivery marks. */
+export const stripDelivery = (text: string) => text.replace(/\[[a-z ]+\]/gi, " ").replace(/\.\.\./g, " ").replace(/\s+/g, " ").trim();
+
+/** True when the tagged text says exactly the script's words (tags and pauses aside). */
+export function sameWords(delivery: string, narration: string): boolean {
+  const words = (s: string) => s.split(/\s+/).map((w) => w.toLowerCase().replace(/[^a-z0-9']/g, "")).filter(Boolean).join(" ");
+  return words(stripDelivery(delivery)) === words(narration);
+}
+
+/**
+ * Delivery marks for an expressive voice: a few tags and pauses, placed by the
+ * model, kept only if not one word changed. Null means "read it plain".
+ */
+export async function deliveryFor(ctx: Ctx, brief: Brief, scene: Scene): Promise<string | null> {
+  if (!/elevenlabs-v3/.test(ctx.style.voice.model)) return null;
+  try {
+    const { text } = await ctx.llm.json({
+      system: `You direct an expressive narrator (ElevenLabs v3) reading one scene of an explainer video. Return the narration with delivery marks for the voice: audio tags in square brackets, only from this list: ${DELIVERY_TAGS.map((t) => `[${t}]`).join(" ")}. A tag goes right before the sentence it colours and lasts a few words. At most one tag per two sentences; the scene's first sentence gets one if it is a hook or a surprise. "..." (an ellipsis) marks a short dramatic pause, at most two per scene, before a reveal. Never change, add, remove or reorder a word, and no other brackets or notes. Tone of the video: ${brief.tone}. Beat: ${scene.beat}.`,
+      user: scene.narration,
+      schema: Delivery,
+      maxTokens: 800,
+    });
+    return sameWords(text, scene.narration) && text !== scene.narration ? text : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function narrate(ctx: Ctx, brief: Brief, scene: Scene): Promise<SceneAssets["audio"]> {
   const v = ctx.style.voice;
   const speed = brief.derivedFrom?.reaction === "deeper" ? v.deeperSpeed : v.speed;
-  const model = brief.tone === "playful" ? v.playfulModel : v.model;
-  const out = await generateSpeech(ctx.hedra, `${brief.projectId}:${scene.id}:speech`, model, {
+  const delivery = await deliveryFor(ctx, brief, scene);
+  const out = await generateSpeech(ctx.hedra, `${brief.projectId}:${scene.id}:speech`, [v.model, v.fallbackModel].filter(Boolean), {
     text: scene.narration,
+    delivery,
     voiceId: v.voiceId,
     speed,
   });
@@ -144,6 +201,7 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
   const scope = (k: string) => `${brief.projectId}:${scene.id}:${k}`;
 
   const cast = plan.cast ?? [];
+  let sounds: SoundCue[] = [];
   if (isCodeScene(scene.visualType)) {
     let animation = await renderCodeScene(ctx, brief, scene, audio, qa, cast);
     // A 3D scene that never worked: Manim in the math style (no Hedra visuals there), an illustration otherwise.
@@ -152,7 +210,7 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
       scene = { ...scene, visualType: "manim" };
       animation = await renderCodeScene(ctx, brief, scene, audio, qa, cast);
     }
-    if (animation) return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals: [{ asset: animation, role: "animation" }], qa });
+    if (animation) return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals: [{ asset: animation.asset, role: "animation" }], sounds: animation.sounds, qa });
     if (brief.style === "math") return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, qa });
     // Illustrated: a 3D scene becomes an animated illustration; flat motion graphics become an illustrated diagram.
     const next = scene.visualType === "motion" ? "diagram" : "still-animated";
@@ -216,7 +274,10 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
     if (scene.visualType === "diagram") {
       if ((await ctx.animator.available()).includes("motion")) {
         const animated = await overlayCallouts(ctx, brief, scene, audio, still, qa, cast);
-        if (animated) visuals.push({ asset: animated, role: "animation" });
+        if (animated) {
+          visuals.push({ asset: animated.asset, role: "animation" });
+          sounds = animated.sounds;
+        }
       }
       break;
     }
@@ -267,7 +328,7 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
     scene = { ...scene, visualType: next };
   }
 
-  return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, qa });
+  return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, sounds, qa });
 }
 
 // ---------------------------------------------------------------------------
@@ -284,18 +345,22 @@ const ENGINE_LOOK: Record<Engine, string> = {
   motion: "flat 2D motion graphics in a flat-illustration house style",
 };
 
-async function scoreCode(ctx: Ctx, scene: Scene, engine: Engine, frames: string[], overlay = false) {
+async function scoreCode(ctx: Ctx, scene: Scene, engine: Engine, frames: string[], overlay = false, motion?: { times: number[]; shots: string }) {
   const look = overlay ? "animated callouts (rings, arrows, labels, spotlight) drawn over an illustration; check they point at the right parts" : ENGINE_LOOK[engine];
+  // Motion scenes are judged on motion: frames at known times against the shot list, and change between frames.
+  const timing = motion
+    ? ` The ${frames.length} frames are in time order, at t = ${motion.times.map((x) => x.toFixed(1)).join(", ")} s. Judge the MOTION: does each frame show what the shot list says is on screen at that moment, and is something visibly different between consecutive frames (nothing static for long)? Count a frame that still shows an earlier shot, or an empty frame, against matchesDirection.`
+    : "";
   return ctx.llm.vision({
-    system: `Score frames from an animated explainer scene: ${look}. matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no text spilling out of its pill or box, no overlapping text or objects, good contrast, the bottom-right corner clear for captions? hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix.`,
-    user: `Direction: ${scene.visualDirection}\nNarration: ${scene.narration}`,
+    system: `Score frames from an animated explainer scene: ${look}.${timing} matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no text spilling out of its pill or box, no overlapping text or objects, good contrast, the bottom-right corner clear for captions? hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix.`,
+    user: `Direction: ${scene.visualDirection}\nNarration: ${scene.narration}${motion?.shots ?? ""}`,
     imageUrls: frames,
     schema: VisionScore,
   });
 }
 
 /** Find the still's parts, then animate callouts over it with the motion engine. */
-async function overlayCallouts(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], still: MirroredAsset, qa: QaResult[], cast: CastMember[]): Promise<MirroredAsset | null> {
+async function overlayCallouts(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], still: MirroredAsset, qa: QaResult[], cast: CastMember[]): Promise<CodeRender | null> {
   const res = await fetch(still.url);
   if (!res.ok) return null;
   const image: OverlayImage = { data: new Uint8Array(await res.arrayBuffer()), type: res.headers.get("content-type") ?? still.contentType };
@@ -327,7 +392,7 @@ async function renderCodeScene(
   qa: QaResult[],
   cast: CastMember[] = [],
   overlay?: { image: OverlayImage; parts: StillPart[] },
-): Promise<MirroredAsset | null> {
+): Promise<CodeRender | null> {
   const engine = scene.visualType as Engine;
   const progress = makeProgress(ctx, brief.projectId, "visuals");
   const n = scene.id.slice(1);
@@ -345,12 +410,20 @@ async function renderCodeScene(
     `Narration timeline (seconds from the start of the scene):\n${narrationTimeline(scene.narration, audio.words)}`,
   ].filter(Boolean).join("\n\n");
 
+  // Motion scenes are planned shot by shot first; the code follows the plan and the reviewer checks against it.
+  let shots = "";
+  if (engine === "motion") {
+    await progress(`planning the shots for scene ${n}`, 0.3);
+    const plan = await ctx.llm.json({ system: SHOT_LIST_RULES, user: brief0, schema: ShotList, maxTokens: 1500 });
+    shots = `\n\nShot list (follow it; seconds from the start of the scene):\n${plan.shots.slice(0, 12).map((s) => `[${s.at.toFixed(1)} s] ${s.action}`).join("\n")}`;
+  }
+
   let feedback = "";
-  let best: { asset: MirroredAsset; score: number } | null = null;
+  let best: { asset: MirroredAsset; score: number; sounds: SoundCue[] } | null = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
     const what = engine === "three" ? "3D scene" : overlay ? "animation over the picture" : "animation";
     await progress(`${attempt === 1 ? "writing" : "fixing"} the ${what} for scene ${n}`, 0.3 + 0.15 * attempt);
-    const { code: raw } = await ctx.llm.json({ system: rules, user: brief0 + feedback, schema: SceneCode, maxTokens: 6000 });
+    const { code: raw, sounds } = await ctx.llm.json({ system: rules, user: brief0 + shots + feedback, schema: SceneCode, maxTokens: 6000 });
     const code = stripFences(raw);
     const r = await ctx.animator.render(engine, code, durationS, background, overlay?.image);
     if (!r.ok) {
@@ -361,12 +434,15 @@ async function renderCodeScene(
     const name = `${scene.id}-${overlay ? "overlay" : engine}-${attempt}.mp4`;
     const asset = await ctx.mirror.put(brief.projectId, name, r.video, "video/mp4", { width: 1920, height: 1080, durationMs: Math.round(durationS * 1000) });
     const mirrored: MirroredAsset = { ...asset, model: engine, costUsd: 0 };
-    const frames = await ctx.frames.sample(mirrored.url, 3).catch(() => null);
-    const score = frames ? await scoreCode(ctx, scene, engine, frames, Boolean(overlay)) : { matchesDirection: 0.7, styleMatch: 0.7, hasText: false, notes: "frames unavailable; accepted unchecked" };
+    const nFrames = engine === "motion" ? 5 : 3;
+    const frames = await ctx.frames.sample(mirrored.url, nFrames).catch(() => null);
+    const score = frames
+      ? await scoreCode(ctx, scene, engine, frames, Boolean(overlay), engine === "motion" ? { times: sampleTimes(durationS, nFrames), shots } : undefined)
+      : { matchesDirection: 0.7, styleMatch: 0.7, hasText: false, notes: "frames unavailable; accepted unchecked" };
     const s = Math.min(score.matchesDirection, score.styleMatch);
     const ok = score.matchesDirection >= PASS - 0.1 && score.styleMatch >= PASS;
     qa.push({ check: "visual-matches-direction", passed: ok, score: s, attempts: attempt, fallback: null, notes: score.notes });
-    if (!best || s > best.score) best = { asset: mirrored, score: s };
+    if (!best || s > best.score) best = { asset: mirrored, score: s, sounds: tidySounds(sounds, durationS) };
     if (ok) break;
     feedback = `\n\nYOUR PREVIOUS CODE RENDERED, but a reviewer looking at frames said: ${score.notes}\nImprove it and return the full code.\n--- code ---\n${code}`;
   }
@@ -375,10 +451,12 @@ async function renderCodeScene(
     const r = await ctx.animator.render("manim", fallbackManim(scene.narration, scene.onScreenTerms), durationS, background);
     if (r.ok) {
       const asset = await ctx.mirror.put(brief.projectId, `${scene.id}-manim-fallback.mp4`, r.video, "video/mp4", { width: 1920, height: 1080, durationMs: Math.round(durationS * 1000) });
-      best = { asset: { ...asset, model: "manim", costUsd: 0 }, score: 0 };
+      best = { asset: { ...asset, model: "manim", costUsd: 0 }, score: 0, sounds: [] };
       qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 3, fallback: "safe Manim scene", notes: null });
     }
   }
   if (best) await progress(`animated scene ${n}`, 0.9, { sceneId: scene.id, clipUrl: best.asset.url });
-  return best?.asset ?? null;
+  return best ? { asset: best.asset, sounds: best.sounds } : null;
 }
+
+type CodeRender = { asset: MirroredAsset; sounds: SoundCue[] };

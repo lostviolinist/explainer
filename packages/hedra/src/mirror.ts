@@ -75,6 +75,25 @@ export class AssetMirror {
     }
   }
 
+  /** Public URL of a library asset (shared by every project: music beds, sound effects). */
+  libraryUrl(name: string): string {
+    return this.publicUrl(`library/${name}`);
+  }
+
+  /** A small JSON record from the library, or null when it isn't there. */
+  async getLibraryJson<T>(name: string): Promise<T | null> {
+    if (!(await this.exists(`library/${name}`))) return null;
+    const res = await this.f(this.publicUrl(`library/${name}`), { cache: "no-store" } as RequestInit);
+    return res.ok ? ((await res.json()) as T) : null;
+  }
+
+  /** Store a library asset; returns its public URL. */
+  async putLibrary(name: string, bytes: Uint8Array, contentType: string): Promise<string> {
+    const key = `library/${name}`;
+    await this.s3.send(new PutObjectCommand({ Bucket: this.opts.bucket, Key: key, Body: bytes, ContentType: contentType, CacheControl: contentType === "application/json" ? "no-cache" : "public, max-age=31536000, immutable" }));
+    return this.publicUrl(key);
+  }
+
   /** Store bytes we made ourselves (e.g. an animator render) next to the mirrored Hedra outputs. */
   async put(projectId: string, name: string, bytes: Uint8Array, contentType: string, meta: { width?: number; height?: number; durationMs?: number } = {}): Promise<Mirrored> {
     const key = `projects/${projectId}/${name}`;

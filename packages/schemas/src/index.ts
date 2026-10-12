@@ -253,6 +253,7 @@ export const QaResult = z.object({
     "audio",
     "factual-integrity",
     "watchability",
+    "sound",
   ]),
   passed: z.boolean(),
   score: z.number().nullable(),
@@ -261,6 +262,12 @@ export const QaResult = z.object({
   notes: z.string().nullable(),
 });
 export type QaResult = z.infer<typeof QaResult>;
+
+/** A sound effect cue inside a scene: seconds from the scene start, and which sound from the kit. */
+export const SoundKind = z.enum(["pop", "whoosh", "tick", "chime", "swoosh"]);
+export type SoundKind = z.infer<typeof SoundKind>;
+export const SoundCue = z.object({ at: z.number(), kind: SoundKind });
+export type SoundCue = z.infer<typeof SoundCue>;
 
 export const SceneAssets = z.object({
   projectId: z.string().uuid(),
@@ -276,6 +283,8 @@ export const SceneAssets = z.object({
       role: z.enum(["background", "icon", "still", "clip", "presenter", "animation"]),
     }),
   ),
+  /** Sound cues the scene's animation asked for (code scenes). */
+  sounds: z.array(SoundCue).default([]),
   qa: z.array(QaResult),
 });
 export type SceneAssets = z.infer<typeof SceneAssets>;

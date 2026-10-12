@@ -161,26 +161,37 @@ export function upscale(client: HedraClient, scope: string, models: string[], vi
 // ---------------------------------------------------------------------------
 
 export interface SpeechArgs {
+  /** The plain script (what captions show). */
   text: string;
+  /** The script with ElevenLabs v3 audio tags; only a v3 model gets it. */
+  delivery?: string | null;
   voiceId: string;
   speed?: number;
   language?: string;
 }
 
-export function generateSpeech(client: HedraClient, scope: string, model: string, a: SpeechArgs) {
-  return withFallback(client, scope, [model], () => ({
-    text: a.text,
+const isV3 = (model: string) => /elevenlabs-v3/.test(model);
+
+/**
+ * Narration. A v3 model reads the tagged delivery at "natural" stability (so
+ * the tags take); any other model reads the plain text at full stability.
+ */
+export function generateSpeech(client: HedraClient, scope: string, models: string | string[], a: SpeechArgs) {
+  return withFallback(client, scope, Array.isArray(models) ? models : [models], (model) => ({
+    text: isV3(model) && a.delivery ? a.delivery : a.text,
     voice_id: a.voiceId,
     speed: a.speed ?? 1.0,
     language: a.language ?? "en",
-    stability: 1,
+    stability: isV3(model) ? 0.5 : 1,
   }));
 }
 
+/** elevenlabs-music: prompt + duration_ms (3 s – 10 min), instrumental. */
 export function generateMusic(client: HedraClient, scope: string, models: string[], prompt: string, durationMs: number) {
-  return withFallback(client, scope, models, () => ({ prompt, duration_ms: durationMs }));
+  return withFallback(client, scope, models, () => ({ prompt, duration_ms: Math.min(600_000, Math.max(3000, Math.round(durationMs))), force_instrumental: true }));
 }
 
-export function generateSfx(client: HedraClient, scope: string, models: string[], prompt: string, durationMs: number) {
-  return withFallback(client, scope, models, () => ({ prompt, duration_ms: durationMs }));
+/** elevenlabs-sound-effects: text + duration_ms (0.5 – 30 s); prompt_influence 0.5 follows the description closely. */
+export function generateSfx(client: HedraClient, scope: string, models: string[], text: string, durationMs: number) {
+  return withFallback(client, scope, models, () => ({ text, duration_ms: Math.min(30_000, Math.max(500, Math.round(durationMs))), prompt_influence: 0.5 }));
 }

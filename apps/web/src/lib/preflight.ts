@@ -105,7 +105,7 @@ export async function runPreflight(): Promise<Check[]> {
     run("Hedra", `Set HEDRA_API_KEY (format key_id:secret) from the Hedra dashboard, for the workspace that owns the reference images in config/house-style.json. ${restart}`, async () => {
       const style = loadHouseStyle();
       const hedra = new HedraClient({ apiKey: need("HEDRA_API_KEY"), baseUrl: process.env.HEDRA_API_BASE || undefined });
-      const models = [...new Set([...(style.models.still ?? []), ...(style.models.animatedStill ?? []), ...(style.models.generatedClip ?? []), ...(style.models.referenceSequence ?? []), style.voice.model, style.voice.playfulModel])];
+      const models = [...new Set([...(style.models.still ?? []), ...(style.models.animatedStill ?? []), ...(style.models.generatedClip ?? []), ...(style.models.referenceSequence ?? []), style.voice.model, style.voice.fallbackModel])];
       for (const m of models) {
         await hedra.model(m).catch((e: Error) => {
           throw new Error(`model ${m}: ${e.message}`);

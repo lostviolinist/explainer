@@ -130,42 +130,57 @@ const HOUSE = {
   dark: { bg: "deep navy #0B1C3F", ink: "#F6F3EC" },
 };
 
+/** Before the code: the shots, cue by cue. Shot lists make the code build the scene instead of showing it. */
+export const SHOT_LIST_RULES = `You direct one scene of a flat-illustration explainer (2D motion graphics, 1920×1080). Before the code is written, plan the shots: what is on screen and what moves, cue by cue, in the order the narration mentions things.
+Rules: 6–10 shots. Each names its moment (seconds from the scene start, matching the narration timeline), what enters / moves / transforms / reacts / leaves, where (left, centre, right, top; pixel positions welcome), and which recurring cast member it is. Show before you name. Build on what is already on screen rather than clearing it. The subject of the sentence being spoken is the thing that moves; everything else holds or dims. One or two camera moves at most (zoom into a detail, back out for the whole). End on the key object alone. Keep the bottom-right caption box empty. Short, concrete actions, no prose.`;
+
+const KIT_ICONS = "sun, moon, eye, molecule, leaf, person, people, cloud, gear, clock, drop, star, box, heart, bulb, earth, bolt, arrow, check, cross, question, flask, wave, mountain, book, house, tree, brain, rocket, magnet, battery, thermometer, magnifier, coin, dna";
+
 /**
- * Flat-style motion graphics: the illustrated look, built on screen as it's
- * explained. With `parts`, the code animates callouts over the scene's still.
+ * Flat-style motion graphics on the kit (packages/render/src/animator/kit):
+ * the model directs what enters, moves and leaves, and when; the kit does the
+ * easing, the draw-on, the camera and the exits. With `parts`, the code
+ * animates callouts over the scene's still.
  */
 export function motionRules(background: "dark" | "light", parts?: StillPart[]): string {
   const h = HOUSE[background];
   const overlay = parts
     ? `
-OVERLAY MODE: the scene's illustration already fills the frame underneath your code (and zooms slowly with it). Animate ON TOP of it so the picture comes alive as it's explained. Its parts, as pixel boxes [x0, y0, x1, y1]:
+
+OVERLAY MODE: the scene's illustration is already painted under your drawing (the Stage draws it and the camera moves it together with your callouts). Its parts, as pixel boxes [x0, y0, x1, y1]:
 ${parts.map((p) => `- ${p.name}: [${p.box.join(", ")}]`).join("\n")}
-Point at the right part when its words are spoken: a ring or rounded highlight that draws itself around it, an arrow that draws on from a label pill to it, a spotlight that dims everything else (a full-frame rgba(27,34,53,0.45) path with the part cut out, fillRule="evenodd"), motion lines or small particles showing flow between parts, numbered tags 1-2-3 for a sequence. Never cover the illustration with opaque shapes; use strokes and translucent fills. Put label pills in empty areas, not on top of parts.`
+Animate on top, so the picture comes alive as it's explained: <Circumscribe> a part when its words are spoken; <Connect> from a <Label> in an empty area to it; <Highlight> it so the rest dims; <Dots> for flow between parts; 1-2-3 Labels for a sequence; a camera key (zoom ≈ 1.4 onto the part being discussed, then back to 1) is welcome. Never cover the illustration with opaque shapes; strokes and translucent fills only.`
     : `
+
 The ${h.bg} background is already painted. Use the whole frame: the main subject large and clear, supporting details around it.`;
-  return `You write a 2D motion-graphics scene (React + SVG) for one scene of a flat-illustration explainer video. It is rendered frame by frame with Remotion at 1920×1080, 30 fps.
+  return `You write one scene of a flat-illustration explainer as a React motion-graphics module, rendered frame by frame with Remotion at 1920×1080, 30 fps. The toolkit "./Kit" does for flat scenes what Manim does for 3Blue1Brown scenes: you say what appears, moves and leaves, and when; the kit does the easing, the draw-on, the camera and the exits.
 
-OUTPUT: a TSX module \`export default function Scene()\` returning JSX. Return only the code: no explanations, no markdown fences.
+OUTPUT: a TSX module \`export default function Scene()\` whose root element is <Stage>. Return only the code: no explanations, no markdown fences. Times are seconds from the start of the scene; the scene lasts {DURATION} s ({FRAMES} frames).
 
-IMPORTS: only from "react", "remotion" (useCurrentFrame, useVideoConfig, interpolate, spring, Easing, random, AbsoluteFill, Sequence), "@remotion/shapes" (components Rect, Circle, Ellipse, Triangle, Star, Pie, Polygon, Arrow, Callout, and make* functions returning SVG paths), "@remotion/paths" (evolvePath(progress, d) → { strokeDasharray, strokeDashoffset } to draw a path on; getLength, getPointAtLength, interpolatePath) and "./Label" (the Label component below). No images, fonts, network, fetch or Math.random (use random("seed")).
+IMPORTS: only from "./Kit", "react", "remotion" and "@remotion/paths". No other modules, images, fonts, network, fetch or Math.random.
 
-TEXT: every piece of text is a <Label x={..} y={..} anchor="start|middle|end" color="#F2C14E" ink="#1B2235" size={44} opacity={..} scale={..}>words</Label>, placed AFTER the <svg> as its sibling (return a fragment: <><svg …/><Label …/>…</>). It is positioned in the same 1920×1080 pixels and sizes itself to its text, so its pill can never be too small. Never use SVG <text>, and never draw a rect behind text yourself. color="none" gives plain text. Animate it with its opacity and scale props (spring).
+THE KIT (import what you use from "./Kit"):
+- <Stage camera={[{ at, x, y, zoom, over }]}> the root. Camera keys move the view: zoom 1 shows the whole frame centred on (960, 540); to frame a subject, zoom ≈ 1.5 centred on it, over 2 s; return to zoom 1 before the end. <Fixed> keeps its children (titles, legends) still while the camera moves.
+- Paths, in frame pixels: circle(cx, cy, r), ellipse(cx, cy, rx, ry), rect(x, y, w, h, r), line(x1, y1, x2, y2), arrow(x1, y1, x2, y2), curve(x1, y1, x2, y2, bow), polygon([[x, y], ...]).
+- <Shape d fill stroke width at over until enter exit opacity /> one path on the timeline. enter: "draw" (default: the stroke draws on, then the fill arrives — Create / DrawBorderThenFill), "fade", "grow", "pop" (overshoot), "slide", "none". exit at \`until\`: "fade" (default), "shrink", "undraw".
+- <Icon name x y size at over enter until fill stroke /> line icons: ${KIT_ICONS}. Give fill for a solid look.
+- <Group x y origin at enter exit until> several shapes entering and leaving together (enter "fade" | "grow" | "pop" | "slide"; origin is the point it grows from).
+- <Label x y anchor color ink size at until>text</Label> for ALL text: it sizes itself to its words (never draw a rect behind text, never SVG <text>). anchor "start" | "middle" | "end"; color "none" for plain text (ink ${h.ink} on this background). ≤ 4 words, 36–52 px.
+- <Move from to at over> or <Move path at over> moves its children (draw them at \`from\` / the path's start): .animate.shift / MoveAlongPath.
+- <Transform from to at over fill stroke width /> one path becomes another from \`at\` (ReplacementTransform); show the first shape until then with <Shape d={from} until={at} exit="none" />.
+- <Indicate at origin scale> a brief grow-and-back of its children; <Circumscribe x y w h at hold stroke /> a ring draws around a box, holds, undraws; <Flash x y at /> a burst; <Highlight x y w h at until /> dims everything but a box (spotlight).
+- <Connect from to at over head bow /> a line or arrow draws on between two points; <Dots along count speed fill at until /> dots flowing along a path; <Bar x y w h value max fill at over />; <Counter from to at over x y suffix />.
+- useT() the current second; prog(t, at, over, ease) 0→1 for anything custom; PALETTE.yellow/blue/red/green/ink.
 
-ANIMATION: build it on screen like 3Blue1Brown, in sync with the narration.
-- const frame = useCurrentFrame(); const { fps } = useVideoConfig(); timeline times are seconds; frame = seconds × 30. The scene lasts {DURATION} s ({FRAMES} frames).
-- Things appear when they are mentioned: pop in with spring({ frame: frame - start, fps, config: { damping: 14 } }) on scale and opacity; lines, arrows and outlines draw themselves with evolvePath; objects travel along paths (getPointAtLength); values count up with interpolate; shapes morph (interpolatePath); the thing being talked about is highlighted (pulse, ring, colour change, spotlight).
-- Keep something moving in every second; no long static holds. Clamp interpolations (extrapolateLeft/Right: "clamp").
+HOW TO DIRECT IT (what makes a scene feel built, not shown)
+- Follow the shot list and the narration timeline: a thing enters within 0.3 s of its words; what is being talked about is the thing that moves.
+- Show before you name: the shape enters (draw / grow), its Label pops about 0.4 s later.
+- Build, don't cut: add to what is on screen; Transform one thing into the next; Move things instead of replacing them. Fade out (until) only what is no longer needed.
+- Group related changes at the same \`at\`; unrelated ones in sequence. over 0.5–2 s. Use "pop" sparingly.
+- The subject of each sentence reacts at its cue: Indicate / Circumscribe / Flash / a colour change, and the rest dims (Highlight).
+- Camera: zoom to the detail when the narration goes into detail, back out for the whole; one or two moves per scene, never constant drifting.
+- Comparisons side by side; quantities as Bars or Counters; sequences as 1-2-3 Labels lighting up in order; flow as Dots or a Move along a path.
+- Something changes every 1–2 s. End on the key object alone, centred, camera back at zoom 1.
 
-ENGAGEMENT (what keeps people watching)
-- Show before you name: the shape appears, then its label a beat later.
-- Everything enters from somewhere: it grows from its source point or slides in along its path, with a little overshoot (spring).
-- The thing being talked about reacts at its cue: a pulse, a glow ring, a colour change; the rest dims a little (opacity 0.6) so the eye goes to it.
-- Comparisons side by side; quantities as bars that grow or dots that multiply; sequences as 1-2-3 steps that light up in order.
-- Flow is motion: dots travelling along a path (getPointAtLength), dashes marching (animate strokeDashoffset).
-- End on the key object alone, centred.
-- Draw in one <svg viewBox="0 0 1920 1080" width="100%" height="100%">; stroke widths 6–10 with round caps and joins.
-
-LOOK (flat house style): flat shapes, no gradients except a soft glow; palette ink ${h.ink}, accents #F2C14E (yellow), #8FB8E8 (blue), #E4573D (red), #5FA36B (green); rounded corners; generous negative space; simple iconic objects built from primitives, recognisable at a glance.
-- Labels: ≤ 4 words, 36–52 px, fontWeight 600–700, in ink or on an accent pill. Never write sentences or the narration (captions are added separately).
-- Keep inside x ∈ [80, 1840], y ∈ [80, 1000], and nothing at all in the caption box: x > 1000 and y > 840. Check that moving things stay inside the frame at every moment.${overlay}`;
+LOOK: flat shapes in the house palette (ink ${h.ink}, yellow #F2C14E, blue #8FB8E8, red #E4573D, green #5FA36B); rounded corners; strokes 6–10; generous space; the recurring cast drawn the same way every time (same colour for the same thing). Keep inside x ∈ [80, 1840], y ∈ [80, 1000]; nothing in the caption box (x > 1000 and y > 840); moving things stay inside the frame at every moment.${overlay}`;
 }

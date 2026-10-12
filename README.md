@@ -30,12 +30,18 @@ App: http://localhost:3000 · Inngest runs (step-by-step logs and errors): http:
 
 The home page offers two styles:
 
-- **Illustrated**: the flat house style, animated. Mechanisms and processes are flat motion graphics built on screen as they're explained (shapes pop in, arrows and paths draw themselves, things travel and morph, cued to the narration). Detailed pictures are Hedra stills whose parts get animated callouts as they're mentioned (rings drawn around them, arrows from label pills, a spotlight that dims the rest). Plus Hedra clips and animated stills, and 3D scenes where a 3D view explains better.
+- **Illustrated**: the flat house style, animated. Mechanisms and processes are flat motion graphics built on screen as they're explained, written against a toolkit that does for flat scenes what Manim does for 3Blue1Brown ones (`packages/render/src/animator/kit/Kit.tsx`: draw-on, grow, pop, transform, move along paths, indicate, circumscribe, spotlight, a camera with keyframes, counters, bars, a line-icon set, self-sizing labels). Each scene is planned as a shot list first, then coded, then reviewed on frames at known times against that list. Detailed pictures are Hedra stills whose parts get animated callouts as they're mentioned. Plus Hedra clips and animated stills, and 3D scenes where a 3D view explains better. Scenes cut with a flat colour swipe.
 - **3Blue1Brown**: scenes written as [Manim](https://www.manim.community/) code (equations, graphs, geometry), plus 3D scenes. No Hedra images or video, only narration, so it costs a fraction of an illustrated video.
 
 Manim, motion-graphics and 3D scenes are code the model writes per scene, timed to the narration. Two sandbox services render it: `animator/manim` (the official Manim image plus a small render server) and `three` (React + SVG motion graphics and React Three Fiber 3D, both rendered with Remotion; `packages/render/src/animator/three-server.ts`). For callouts, a vision pass first locates the still's parts; the code then draws over the still, which is sent along with it. Render errors and reviewer notes on sampled frames go back to the model for up to three attempts. After that, a Manim scene falls back to a plain safe scene, a motion scene becomes an illustrated diagram, a 3D scene becomes an animated illustration (or Manim in the 3Blue1Brown style), and a diagram whose callouts never work keeps its plain still.
 
 The sandboxes run model-written code, so in the compose file they get no keys, no `.env`, and only the internal `sandbox` network (no internet), with memory, CPU and process limits. When hosting, deploy them privately (not exposed to the internet) and point `MANIM_URL` / `THREE_URL` at them. Both are optional: if one is missing, the setup check shows a warning and the pipeline doesn't use it (without `three`, illustrated videos are back to stills and Hedra clips). Manim's rules for the model distil [adithya-s-k/manim_skill](https://github.com/adithya-s-k/manim_skill) (MIT).
+
+## Music, sound and voice
+
+- **Music bed**: one instrumental track per tone (`elevenlabs-music`, about $2.40 per tone), composed to end on a resolved chord, generated the first time a video with that tone is made and kept in the bucket under `library/`. The composition plays it *end-aligned*: it starts partway into the track so the track's ending lands on the end card, and it is ducked under the narration. `MUSIC_BED=0` turns it off.
+- **Sound effects**: a five-sound kit (pop, whoosh, tick, chime, swoosh; `elevenlabs-sound-effects`, a few cents in total, made once). Code scenes report their own cues; labels and chart bars pop; every swipe cut gets a swoosh; the end card a chime.
+- **Voice**: `elevenlabs-v3` with a few delivery tags per scene (curious, excited, whispers, a dramatic pause…) chosen by the model and checked word for word against the script; if the tagged text changes a single word, or v3 refuses, the plain script goes to `elevenlabs-multilingual-v2`. Captions always show the clean script.
 
 ## Smoke test without paid APIs
 
@@ -72,7 +78,9 @@ Every Hedra call carries an idempotency key from a hash of its input, so retries
 | Decision | Where |
 | --- | --- |
 | House style: flat illustration, detailed; dark/light backgrounds | `config/house-style.json` → `styleText`, `backgrounds`, `referenceFrames` |
-| Narrator: David O. on `elevenlabs-multilingual-v2` at 1.1× | `config/house-style.json` → `voice` |
+| Narrator: David O. on `elevenlabs-v3` at 1.1× (falls back to `multilingual-v2`) | `config/house-style.json` → `voice`; delivery tags in `packages/pipeline/src/stages/visuals.ts` → `deliveryFor` |
+| Music levels, swipe length, sound-effect volume | `packages/render/src/props.ts` → `MUSIC`, `SWIPE_FRAMES`, `SFX_VOLUME` |
+| Music beds and the sound kit (prompts, versions) | `packages/pipeline/src/stages/library.ts` |
 | Models per visual type (`kling-25-turbo` stills-in-motion, `wan-3-0` clips, `minimax-h3` retry) | `config/house-style.json` → `models` |
 | Scene budget: ~165 wpm, 20–40 s scenes | `packages/schemas/src/index.ts` → `sceneBudget` |
 | Recurring cast (the same things drawn the same way in every scene) | `packages/pipeline/src/stages/script.ts` (`cast`), used in Hedra prompts and scene code |
@@ -85,7 +93,6 @@ Every Hedra call carries an idempotency key from a hash of its input, so retries
 ## Still to wire up
 
 - **Forced alignment service.** Word timing comes from OpenAI's transcription API (whisper-1 word timestamps, matched to the script). `ALIGNMENT_URL` can point at a WhisperX-class endpoint instead (`{audio_url, transcript} → {words}`). If both fail, timing is estimated from the text (word lengths and punctuation pauses); the caption highlight then drifts a little.
-- **Music bed and SFX.** Helpers exist in `packages/hedra`; the mix step in the composition is not yet written. Plan: a pre-generated bed per tone, ducked under speech.
 - **Auth and library.** `users` table exists; no sign-in yet. Level inference from history reads `pressedSimpler/pressedDeeper` counts.
 - **Internal QA queue.** Videos whose watchability check fell back are recorded in `qa`; a review UI for us is not built.
 - **Remotion Lambda deploy.** `RENDER_TARGET=lambda` expects a deployed site and function; local rendering works out of the box.

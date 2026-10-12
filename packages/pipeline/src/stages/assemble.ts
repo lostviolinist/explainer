@@ -9,9 +9,10 @@
  * Remotion Lambda) implemented in packages/render; this stage builds the props.
  */
 import { z } from "zod";
-import { RenderResult, QaResult, type Brief, type ScenePlan, type SceneAssets, type ResearchBrief } from "@explainer/schemas";
+import { RenderResult, QaResult, type Brief, type ScenePlan, type SceneAssets, type ResearchBrief, type SoundCue, type SoundKind } from "@explainer/schemas";
 import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
+import type { MusicBed, SfxKit } from "./library.js";
 
 export interface RenderProps {
   projectId: string;
@@ -26,10 +27,18 @@ export interface RenderProps {
     words: SceneAssets["audio"]["words"];
     visuals: SceneAssets["visuals"];
     onScreenTerms: string[];
+    /** Sound cues the scene's animation asked for. */
+    sounds: SoundCue[];
   }[];
   sources: { title: string; domain: string; url: string }[];
   learningGoal: string;
+  /** The tone's music bed; the composition end-aligns it so its ending lands on the end card. */
+  music: { url: string; durationS: number } | null;
+  /** Sound-effect kit, by kind. */
+  sfx: Partial<Record<SoundKind, string>>;
 }
+
+export type RenderExtras = { music: MusicBed | null; sfx: SfxKit };
 
 export interface Renderer {
   render(props: RenderProps): Promise<{ videoUrl: string; srtUrl: string; durationS: number }>;
@@ -38,12 +47,14 @@ export interface Renderer {
 export const Watchability = z.object({ goalAnswer: z.string(), couldMeetGoal: z.boolean(), confusingScenes: z.array(z.string()) });
 export const FactCheck = z.object({ driftedSentences: z.array(z.string()) });
 
-export function buildRenderProps(brief: Brief, plan: ScenePlan, assets: SceneAssets[], research: ResearchBrief): RenderProps {
+export function buildRenderProps(brief: Brief, plan: ScenePlan, assets: SceneAssets[], research: ResearchBrief, extras: RenderExtras = { music: null, sfx: {} }): RenderProps {
   const byScene = new Map(assets.map((a) => [a.sceneId, a]));
   return {
     projectId: brief.projectId,
     background: brief.style === "math" ? "math" : plan.background,
     learningGoal: brief.learningGoal,
+    music: extras.music ? { url: extras.music.url, durationS: extras.music.durationS } : null,
+    sfx: extras.sfx,
     scenes: plan.scenes.map((s) => {
       const a = byScene.get(s.id);
       if (!a) throw new Error(`no assets for ${s.id}`);
@@ -57,6 +68,7 @@ export function buildRenderProps(brief: Brief, plan: ScenePlan, assets: SceneAss
         words: a.audio.words,
         visuals: a.visuals,
         onScreenTerms: s.onScreenTerms,
+        sounds: a.sounds ?? [],
       };
     }),
     sources: research.sources.map((s) => ({ title: s.title, domain: s.domain, url: s.url })),
@@ -81,7 +93,7 @@ export function pacingCheck(plan: ScenePlan, assets: SceneAssets[]): QaResult[] 
   });
 }
 
-export async function assemble(ctx: Ctx, renderer: Renderer, brief: Brief, plan: ScenePlan, assets: SceneAssets[], research: ResearchBrief): Promise<RenderResult> {
+export async function assemble(ctx: Ctx, renderer: Renderer, brief: Brief, plan: ScenePlan, assets: SceneAssets[], research: ResearchBrief, extras: RenderExtras = { music: null, sfx: {} }): Promise<RenderResult> {
   const progress = makeProgress(ctx, brief.projectId, "assemble");
   const qa: QaResult[] = [];
 
@@ -107,8 +119,18 @@ export async function assemble(ctx: Ctx, renderer: Renderer, brief: Brief, plan:
   });
   qa.push({ check: "watchability", passed: watch.couldMeetGoal && watch.confusingScenes.length === 0, score: null, attempts: 1, fallback: watch.couldMeetGoal ? null : "ship and flag for internal spot-check", notes: watch.confusingScenes.join(",") || null });
 
+  const sfxCount = Object.keys(extras.sfx).length;
+  qa.push({
+    check: "sound",
+    passed: Boolean(extras.music) && sfxCount > 0,
+    score: null,
+    attempts: 1,
+    fallback: extras.music ? null : "no music bed",
+    notes: `${extras.music ? `${brief.tone} music bed ${extras.music.durationS.toFixed(0)}s, end-aligned` : "no music bed"}; ${sfxCount} sound effects`,
+  });
+
   await progress("rendering", 0.5);
-  const props = buildRenderProps(brief, plan, assets, research);
+  const props = buildRenderProps(brief, plan, assets, research, extras);
   const out = await renderer.render(props);
 
   const costUsd = 0; // summed from the store by the web layer

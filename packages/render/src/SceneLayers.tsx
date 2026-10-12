@@ -1,5 +1,5 @@
-import { AbsoluteFill, Freeze, Img, OffthreadVideo, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { FPS, PALETTE, accentsFor, cueFrame } from "./props.js";
+import { AbsoluteFill, Audio, Freeze, Img, OffthreadVideo, Sequence, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { FPS, PALETTE, SFX_VOLUME, accentsFor, cueFrame } from "./props.js";
 import type { ExplainerProps } from "./props.js";
 
 type Scene = ExplainerProps["scenes"][number];
@@ -56,8 +56,18 @@ export function Visual({ scene }: { scene: Scene }) {
   return null;
 }
 
-/** Programmatic layer driven by the anim spec and word timestamps. */
-export function Programmatic({ scene, background }: { scene: Scene; background: ExplainerProps["background"] }) {
+/** A short sound at a frame of the scene (when the kit has it). */
+function Cue({ src, from }: { src?: string; from: number }) {
+  if (!src || from < 0) return null;
+  return (
+    <Sequence from={from} name="cue">
+      <Audio src={src} volume={SFX_VOLUME} />
+    </Sequence>
+  );
+}
+
+/** Programmatic layer driven by the anim spec and word timestamps; labels and bars pop with a sound. */
+export function Programmatic({ scene, background, sfx = {} }: { scene: Scene; background: ExplainerProps["background"]; sfx?: Record<string, string> }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const pal = PALETTE[background];
@@ -67,6 +77,9 @@ export function Programmatic({ scene, background }: { scene: Scene; background: 
   if (spec.kind === "labelled-diagram") {
     return (
       <AbsoluteFill style={{ padding: 96, fontFamily: "Inter, system-ui, sans-serif" }}>
+        {spec.labels.map((l, i) => (
+          <Cue key={`c${i}`} src={sfx.pop} from={cueFrame(scene.words, l.cueWord)} />
+        ))}
         {spec.labels.map((l, i) => {
           const at = cueFrame(scene.words, l.cueWord);
           const s = spring({ frame: frame - at, fps, config: { damping: 200 } });
@@ -99,6 +112,9 @@ export function Programmatic({ scene, background }: { scene: Scene; background: 
   if (spec.kind === "kinetic-text") {
     return (
       <AbsoluteFill style={{ justifyContent: "center", padding: "0 160px", fontFamily: "Inter, system-ui, sans-serif" }}>
+        {spec.lines.map((l, i) => (
+          <Cue key={`c${i}`} src={sfx.pop} from={cueFrame(scene.words, l.cueWord)} />
+        ))}
         {spec.lines.map((l, i) => {
           const at = cueFrame(scene.words, l.cueWord);
           const s = spring({ frame: frame - at, fps, config: { damping: 200 } });
@@ -118,6 +134,7 @@ export function Programmatic({ scene, background }: { scene: Scene; background: 
     const grow = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 45 });
     return (
       <AbsoluteFill style={{ padding: "160px 200px 300px", display: "flex", flexDirection: "row", alignItems: "flex-end", gap: 48, fontFamily: "Inter, system-ui, sans-serif" }}>
+        <Cue src={sfx.whoosh} from={2} />
         {spec.series.map((x, i) => (
           <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
             <div style={{ color: pal.ink, fontSize: 40, fontWeight: 600 }}>{x.value}</div>

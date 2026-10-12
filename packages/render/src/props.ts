@@ -23,9 +23,15 @@ export const ExplainerProps = z.object({
         }),
       ),
       onScreenTerms: z.array(z.string()),
+      /** Sound cues from the scene's animation (seconds from the scene start). */
+      sounds: z.array(z.object({ at: z.number(), kind: z.string() })).default([]),
     }),
   ),
   sources: z.array(z.object({ title: z.string(), domain: z.string(), url: z.string() })),
+  /** The music bed; played end-aligned so its composed ending lands on the end card. */
+  music: z.object({ url: z.string(), durationS: z.number() }).nullable().default(null),
+  /** Sound-effect kit by kind (pop, whoosh, tick, chime, swoosh). */
+  sfx: z.record(z.string(), z.string()).default({}),
 });
 export type ExplainerProps = z.infer<typeof ExplainerProps>;
 
@@ -47,6 +53,46 @@ export const PALETTE = {
 };
 
 export const accentsFor = (background: ExplainerProps["background"]) => (background === "math" ? PALETTE.mathAccents : PALETTE.accents);
+
+/** Music levels (linear gain): under the narration, between scenes and on the end card. */
+export const MUSIC = { under: 0.14, between: 0.3, fadeInFrames: 45, duckFrames: 18 };
+export const SFX_VOLUME = 0.35;
+/** Frames a swipe transition panel takes to cover or uncover the frame (illustrated style). */
+export const SWIPE_FRAMES = 10;
+
+/**
+ * Where in the bed to start so that its ending lands exactly on the video's
+ * end. A bed shorter than the video starts at 0 and loops (then fades out).
+ */
+export function musicStart(bedDurationS: number, totalFrames: number): { startFrom: number; loop: boolean } {
+  const bedFrames = Math.floor(bedDurationS * FPS);
+  return bedFrames >= totalFrames ? { startFrom: bedFrames - totalFrames, loop: false } : { startFrom: 0, loop: true };
+}
+
+/** Narration windows [from, to) in frames, for ducking. */
+export function speechWindows(p: ExplainerProps): [number, number][] {
+  let cursor = 0;
+  return p.scenes.map((s) => {
+    const from = cursor;
+    cursor += sceneFrames(s.durationS);
+    return [from, from + Math.round(s.durationS * FPS)];
+  });
+}
+
+/** Bed gain at a frame: faded in, ducked under speech, up in the gaps and on the end card, tapered at the very end. */
+export function musicVolume(frame: number, windows: [number, number][], total: number, loop: boolean): number {
+  let inside = Infinity;
+  for (const [a, b] of windows) {
+    const d = frame < a ? a - frame : frame >= b ? frame - b + 1 : 0;
+    inside = Math.min(inside, d);
+  }
+  const mix = Math.min(1, inside / MUSIC.duckFrames);
+  let v = MUSIC.under + (MUSIC.between - MUSIC.under) * mix;
+  v *= Math.min(1, frame / MUSIC.fadeInFrames);
+  // Looping bed: fade out over the end card. End-aligned bed: its own ending, plus a tiny safety taper.
+  v *= loop ? Math.min(1, (total - frame) / (END_CARD_S * FPS)) : Math.min(1, (total - frame) / 8);
+  return Math.max(0, v);
+}
 
 export function sceneFrames(durationS: number) {
   return Math.round((durationS + SCENE_TAIL_S) * FPS);

@@ -109,8 +109,8 @@ test("script passes learner and expert review on the first attempt and records i
 test("pacing check flags a scene more than 10% over target", () => {
   const plan: any = { scenes: [{ id: "s1", targetS: 20 }, { id: "s2", targetS: 30 }] };
   const assets: SceneAssets[] = [
-    { projectId: PID, sceneId: "s1", audio: { asset: {} as any, durationS: 21, words: [] }, visuals: [], qa: [] },
-    { projectId: PID, sceneId: "s2", audio: { asset: {} as any, durationS: 36, words: [] }, visuals: [], qa: [] },
+    { projectId: PID, sceneId: "s1", audio: { asset: {} as any, durationS: 21, words: [] }, visuals: [], sounds: [], qa: [] },
+    { projectId: PID, sceneId: "s2", audio: { asset: {} as any, durationS: 36, words: [] }, visuals: [], sounds: [], qa: [] },
   ];
   const r = pacingCheck(plan, assets);
   assert.equal(r[0]!.passed, true);
@@ -258,14 +258,17 @@ test("trimToFit drops whole middle scenes only when sentences run out, and keeps
 
 function codeCtx(opts: { render: (engine: Engine, code: string, durationS: number) => { ok: true } | { ok: false; error: string }; vision?: (n: number) => number }) {
   const prompts: { system: string; user: string }[] = [];
+  const visionPrompts: string[] = [];
   const renders: { engine: Engine; code: string; durationS: number; background: string; image?: OverlayImage }[] = [];
   let visionCalls = 0;
   const llm: LLM = {
     async json<T>(a: { system: string; user: string; schema: z.ZodType<T> }) {
       prompts.push({ system: a.system, user: a.user });
-      return a.schema.parse({ code: `class GeneratedScene(Scene):\n    # attempt ${prompts.length}\n    def construct(self): pass` });
+      if (/plan the shots/.test(a.system)) return a.schema.parse({ shots: [{ at: 0.5, action: "the sun grows in on the left" }, { at: 2, action: "a ray draws on to the eye" }] });
+      return a.schema.parse({ code: `class GeneratedScene(Scene):\n    # attempt ${prompts.length}\n    def construct(self): pass`, sounds: [{ at: 2.5, kind: "pop" }, { at: 0.5, kind: "whoosh" }, { at: 0.7, kind: "tick" }, { at: 99, kind: "chime" }] });
     },
-    async vision<T>(a: { schema: z.ZodType<T> }) {
+    async vision<T>(a: { system: string; schema: z.ZodType<T> }) {
+      visionPrompts.push(a.system);
       const q = opts.vision?.(++visionCalls) ?? 0.9;
       return a.schema.parse({ matchesDirection: q, styleMatch: q, hasText: true, notes: q < 0.7 ? "the equation runs off the right edge" : "ok" });
     },
@@ -281,7 +284,7 @@ function codeCtx(opts: { render: (engine: Engine, code: string, durationS: numbe
   } satisfies Animator;
   ctx.mirror = { put: async (_p: string, name: string, bytes: Uint8Array, contentType: string, meta: any) => ({ hedraAssetId: `local:${name}`, url: `http://localhost:9000/explainer-assets/${name}`, contentType, width: 1920, height: 1080, durationMs: meta.durationMs, bytes: bytes.length }) } as any;
   ctx.frames = { sample: async () => ["data:image/jpeg;base64,AAA", "data:image/jpeg;base64,AAA", "data:image/jpeg;base64,AAA"] };
-  return { ctx, prompts, renders };
+  return { ctx, prompts, renders, visionPrompts };
 }
 
 const mathBrief = { ...briefFor(180), style: "math" as const, background: "dark" as const };
@@ -363,14 +366,19 @@ test("a diagram whose stills are all rejected keeps the best one instead of goin
 // Flat motion graphics (illustrated style)
 
 test("an illustrated motion scene is written as flat motion graphics on the house background", async () => {
-  const { ctx, prompts, renders } = codeCtx({ render: () => ({ ok: true }) });
+  const { ctx, prompts, renders, visionPrompts } = codeCtx({ render: () => ({ ok: true }) });
   const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, codeScene("motion"), codeAudio);
   assert.deepEqual(renders.map((r) => [r.engine, r.background, r.image]), [["motion", "#F6F3EC", undefined]]);
-  assert.match(prompts[0]!.system, /2D motion-graphics scene/);
-  assert.match(prompts[0]!.system, /\(198 frames\)/, "frame count filled in");
-  assert.doesNotMatch(prompts[0]!.system, /OVERLAY MODE/);
+  assert.match(prompts[0]!.system, /plan the shots/, "the shots are planned first");
+  assert.match(prompts[1]!.system, /motion-graphics module/);
+  assert.match(prompts[1]!.system, /\(198 frames\)/, "frame count filled in");
+  assert.match(prompts[1]!.system, /<Stage camera/, "the kit is explained");
+  assert.match(prompts[1]!.user, /Shot list[\s\S]*\[2\.0 s\] a ray draws on to the eye/, "the code follows the shot list");
+  assert.doesNotMatch(prompts[1]!.system, /OVERLAY MODE/);
   assert.deepEqual(out.visuals.map((v) => v.role), ["animation"]);
   assert.match(out.visuals[0]!.asset.url, /s2-motion-1\.mp4$/);
+  assert.match(visionPrompts[0]!, /frames are in time order, at t = 0\.5, 1\.9, 3\.3, 4\.7, 6\.1 s/, "the reviewer knows when each frame is");
+  assert.deepEqual(out.sounds, [{ at: 0.5, kind: "whoosh" }, { at: 2.5, kind: "pop" }], "sound cues sorted, not on top of each other, inside the scene");
 });
 
 /** A diagram scene with a fake Hedra still and a vision model that also maps the still's parts. */
@@ -408,7 +416,7 @@ test("a diagram's still gets animated callouts: its parts are located, then poin
   assert.equal(renders[0]!.engine, "motion");
   assert.deepEqual([...renders[0]!.image!.data], [137, 80, 78, 71], "the still is sent with the code");
   assert.equal(renders[0]!.image!.type, "image/png");
-  assert.match(prompts[0]!.system, /OVERLAY MODE[\s\S]*- chloroplast: \[192, 216, 576, 540\]/, "parts in 1920×1080 pixels");
+  assert.match(prompts[1]!.system, /OVERLAY MODE[\s\S]*- chloroplast: \[192, 216, 576, 540\]/, "parts in 1920×1080 pixels");
   assert.deepEqual(out.visuals.map((v) => v.role), ["background", "animation"], "the still stays as a fallback layer");
   assert.match(out.visuals[1]!.asset.url, /s2-overlay-1\.mp4$/);
 });
