@@ -47,6 +47,18 @@ The sandboxes run model-written code, so in the compose file they get no keys, n
 - **Sound effects**: a five-sound kit (pop, whoosh, tick, chime, swoosh; `elevenlabs-sound-effects`, a few cents in total, made once). Code scenes report their own cues; labels and chart bars pop; every swipe cut gets a swoosh; the end card a chime.
 - **Voice**: `elevenlabs-v3` with a few delivery tags per scene (curious, excited, whispers, a dramatic pause…) chosen by the model and checked word for word against the script; if the tagged text changes a single word, or v3 refuses, the plain script goes to `elevenlabs-multilingual-v2`. Captions always show the clean script.
 
+## Speed
+
+Where the time goes, measured with the fake APIs (so this is our own work, not vendor latency), on a 4-core box: the **final render** is the longest step (a 64 s video takes ~4 min: Remotion captures 1080p frames from Chrome at 13–18 fps whatever is on them, and video scenes cost a little more), then the **animation sandbox** (each attempt bundled a fresh Remotion project for 12–29 s before ~45 s of rendering), then everything the model writes. What's done about it:
+
+- The sandbox keeps stable render slots so Remotion's webpack cache stays warm: bundling drops from ~16 s to ~3 s per attempt after the first; two scenes render at a time (`MAX_PARALLEL`, with 4 cores in the compose file).
+- Reviews that only need the script (facts, watchability; learner and expert) run in parallel and alongside the scene generation instead of before the render.
+- Quick judgements (frame checks, delivery tags, prompt planning) ask the model for low reasoning effort; it falls back silently on a model without that setting.
+- The final render paints on every core and encodes with x264 `veryfast` (measured: encoder and tab count barely matter; frame capture is the limit). `RENDER_SCALE=0.6667` renders 720p about twice as fast if that trade is acceptable.
+- While the final render runs, the progress page plays a **rough cut**: the finished scenes with narration and captions, straight from the bucket, no render needed.
+
+The lever that is yours: **Docker Desktop → Settings → Resources**: the stack is CPU-bound while rendering, and 6–8 cores make a visible difference. The structural next step, if render time matters more than anything, is to assemble the final video with ffmpeg (burned-in captions, crossfades, audio mix) instead of re-painting already-rendered scenes through Chrome; that is a rewrite of the composition, not a setting. Everything else is vendor latency (Hedra video generation, the model writing code) and the QA retries, which trade time for quality.
+
 ## Smoke test without paid APIs
 
 `pnpm --filter @explainer/web smoke` runs the whole pipeline in both styles (the 3Blue1Brown run needs `MANIM_URL`; motion graphics, callouts and 3D scenes need `THREE_URL`) — every stage, the Postgres store, the S3 mirror, frame sampling and a real Remotion render — with fake OpenAI, Exa and Hedra. The fake Hedra rejects any request that breaks a model's published input schema. It needs the database and bucket from `.env` (the Docker stack works: `docker compose exec web pnpm --filter @explainer/web smoke`) and prints `SMOKE OK` with the rendered video's URL. To watch the progress page fill in, slow it down and keep the project: `SMOKE_DELAY_MS=3000 SMOKE_KEEP=1`, then open the `/p/<project id>` it prints (`SMOKE_STILLS=a.png,b.png` uses real images as the fake stills).

@@ -14,6 +14,9 @@ export type LiveScene = {
   stillUrl?: string;
   clipUrl?: string;
   audioUrl?: string;
+  /** Word timestamps and narration length, once the scene is done (for the rough cut). */
+  words?: { w: string; start: number; end: number }[];
+  durationS?: number;
   done: boolean;
 };
 
@@ -68,6 +71,8 @@ export async function getLiveState(projectId: string): Promise<LiveState> {
         stillUrl: a?.visuals.find((v) => v.role === "still" || v.role === "background")?.asset.url,
         clipUrl: a?.visuals.find((v) => v.role === "clip" || v.role === "animation")?.asset.url,
         audioUrl: a?.audio.asset.url,
+        words: a?.audio.words,
+        durationS: a?.audio.durationS,
         done: Boolean(a),
       };
     }),

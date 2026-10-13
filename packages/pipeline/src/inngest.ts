@@ -14,7 +14,7 @@ import { intake } from "./stages/intake.js";
 import { research } from "./stages/research.js";
 import { script } from "./stages/script.js";
 import { planScene, narrate, renderSceneAssets } from "./stages/visuals.js";
-import { assemble } from "./stages/assemble.js";
+import { assemble, reviewScript } from "./stages/assemble.js";
 import { ensureMusicBed, ensureSfxKit } from "./stages/library.js";
 
 type Events = {
@@ -65,7 +65,7 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
       // Narration and visuals fan out per scene. Narration first (cheap, sets
       // the clip duration), then visuals. The music bed and sound kit come from
       // the library (made once, on the first video that needs them).
-      const [assets, music, sfx] = await Promise.all([
+      const [assets, music, sfx, reviewed] = await Promise.all([
         Promise.all(
           planned.map((s) =>
             step.run(`scene-${s.id}`, async () => {
@@ -78,9 +78,11 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
         ),
         step.run("music", () => ensureMusicBed(ctx, projectId, brief.tone)),
         step.run("sfx", () => ensureSfxKit(ctx, projectId)),
+        // Script-only checks (facts, watchability) run now rather than before the render.
+        step.run("review-script", () => reviewScript(ctx, brief, planWithRender, rb)),
       ]);
 
-      const result = await step.run("assemble", () => assemble(ctx, getRenderer(), brief, planWithRender, assets, rb, { music, sfx }));
+      const result = await step.run("assemble", () => assemble(ctx, getRenderer(), brief, planWithRender, assets, rb, { music, sfx }, reviewed));
       return result;
     },
   );

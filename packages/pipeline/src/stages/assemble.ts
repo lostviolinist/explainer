@@ -93,31 +93,40 @@ export function pacingCheck(plan: ScenePlan, assets: SceneAssets[]): QaResult[] 
   });
 }
 
-export async function assemble(ctx: Ctx, renderer: Renderer, brief: Brief, plan: ScenePlan, assets: SceneAssets[], research: ResearchBrief, extras: RenderExtras = { music: null, sfx: {} }): Promise<RenderResult> {
+/**
+ * The checks that need only the script and the research (factual integrity,
+ * watchability). They run as their own step, alongside the scene generation,
+ * so they cost no wall-clock time before the render.
+ */
+export async function reviewScript(ctx: Ctx, brief: Brief, plan: ScenePlan, research: ResearchBrief): Promise<QaResult[]> {
+  const claimList = research.claims.map((c) => `${c.id}: ${c.text}`).join("\n");
+  const [fact, watch] = await Promise.all([
+    ctx.llm.json({
+      system: "Final transcript check. List verbatim any narrated sentence that is not supported by the claim ids its scene cites.",
+      user: `Claims:\n${claimList}\n\nScenes:\n${plan.scenes.map((s) => `[${s.id} → ${s.claimIds.join(",")}] ${s.narration}`).join("\n")}`,
+      schema: FactCheck,
+      maxTokens: 1200,
+    }),
+    ctx.llm.json({
+      system: "You are the intended learner. You watch the video: each scene's narration with a description of its picture. Answer the learning goal afterwards and name any scene ids you found confusing.",
+      user: `Learning goal: ${brief.learningGoal}\n\n${plan.scenes.map((s) => `[${s.id}] PICTURE: ${s.visualDirection}\nNARRATION: ${s.narration}`).join("\n\n")}`,
+      schema: Watchability,
+      maxTokens: 1200,
+    }),
+  ]);
+  return [
+    { check: "factual-integrity", passed: fact.driftedSentences.length === 0, score: null, attempts: 1, fallback: fact.driftedSentences.length ? "cut sentence and re-time" : null, notes: fact.driftedSentences.join(" | ") || null },
+    { check: "watchability", passed: watch.couldMeetGoal && watch.confusingScenes.length === 0, score: null, attempts: 1, fallback: watch.couldMeetGoal ? null : "ship and flag for internal spot-check", notes: watch.confusingScenes.join(",") || null },
+  ];
+}
+
+export async function assemble(ctx: Ctx, renderer: Renderer, brief: Brief, plan: ScenePlan, assets: SceneAssets[], research: ResearchBrief, extras: RenderExtras = { music: null, sfx: {} }, reviewed?: QaResult[]): Promise<RenderResult> {
   const progress = makeProgress(ctx, brief.projectId, "assemble");
   const qa: QaResult[] = [];
 
   await progress("checking timing", 0.1);
   qa.push(...pacingCheck(plan, assets));
-
-  await progress("checking every sentence against its source", 0.25);
-  const claimList = research.claims.map((c) => `${c.id}: ${c.text}`).join("\n");
-  const fact = await ctx.llm.json({
-    system: "Final transcript check. List verbatim any narrated sentence that is not supported by the claim ids its scene cites.",
-    user: `Claims:\n${claimList}\n\nScenes:\n${plan.scenes.map((s) => `[${s.id} → ${s.claimIds.join(",")}] ${s.narration}`).join("\n")}`,
-    schema: FactCheck,
-    maxTokens: 1200,
-  });
-  qa.push({ check: "factual-integrity", passed: fact.driftedSentences.length === 0, score: null, attempts: 1, fallback: fact.driftedSentences.length ? "cut sentence and re-time" : null, notes: fact.driftedSentences.join(" | ") || null });
-
-  await progress("checking a learner would get it", 0.4);
-  const watch = await ctx.llm.json({
-    system: "You are the intended learner. You watch the video: each scene's narration with a description of its picture. Answer the learning goal afterwards and name any scene ids you found confusing.",
-    user: `Learning goal: ${brief.learningGoal}\n\n${plan.scenes.map((s) => `[${s.id}] PICTURE: ${s.visualDirection}\nNARRATION: ${s.narration}`).join("\n\n")}`,
-    schema: Watchability,
-    maxTokens: 1200,
-  });
-  qa.push({ check: "watchability", passed: watch.couldMeetGoal && watch.confusingScenes.length === 0, score: null, attempts: 1, fallback: watch.couldMeetGoal ? null : "ship and flag for internal spot-check", notes: watch.confusingScenes.join(",") || null });
+  qa.push(...(reviewed ?? (await reviewScript(ctx, brief, plan, research))));
 
   const sfxCount = Object.keys(extras.sfx).length;
   qa.push({

@@ -207,20 +207,22 @@ Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.${lengthNote ? `\nLEN
     }
     const narration = planScenes.map((s) => s.narration).join("\n\n");
 
-    await progress("checking a learner could follow it", 0.6 + 0.1 * (attempt - 1));
-    const learner = await ctx.llm.json({
-      system: `You are ${LEVEL_WORDS[brief.level]}. You will hear the narration below once, with pictures. Afterwards, answer the learning goal in your own words. List verbatim any sentence you could not follow or any term used before it was explained. Be honest; this is a test of the script, not of you.`,
-      user: `Learning goal: ${brief.learningGoal}\n\nNarration:\n${narration}`,
-      schema: LearnerPass,
-      maxTokens: 1500,
-    });
-
-    const expert = await ctx.llm.json({
-      system: `You are a careful subject expert with the research notes. For each narrated sentence, check it against the claims it cites. List verbatim: (a) sentences with no supporting claim, (b) sentences stated more confidently than their claim's confidence allows (a "single" claim stated as fact; a hedged source stated flatly).`,
-      user: `Claims:\n${claimList}\n\nScenes:\n${planScenes.map((s) => `[${s.id} → ${s.claimIds.join(",")}] ${s.narration}`).join("\n")}`,
-      schema: ExpertPass,
-      maxTokens: 1500,
-    });
+    await progress("checking a learner could follow it, and an expert agrees", 0.6 + 0.1 * (attempt - 1));
+    // The two reviews are independent: run them together.
+    const [learner, expert] = await Promise.all([
+      ctx.llm.json({
+        system: `You are ${LEVEL_WORDS[brief.level]}. You will hear the narration below once, with pictures. Afterwards, answer the learning goal in your own words. List verbatim any sentence you could not follow or any term used before it was explained. Be honest; this is a test of the script, not of you.`,
+        user: `Learning goal: ${brief.learningGoal}\n\nNarration:\n${narration}`,
+        schema: LearnerPass,
+        maxTokens: 1500,
+      }),
+      ctx.llm.json({
+        system: `You are a careful subject expert with the research notes. For each narrated sentence, check it against the claims it cites. List verbatim: (a) sentences with no supporting claim, (b) sentences stated more confidently than their claim's confidence allows (a "single" claim stated as fact; a hedged source stated flatly).`,
+        user: `Claims:\n${claimList}\n\nScenes:\n${planScenes.map((s) => `[${s.id} → ${s.claimIds.join(",")}] ${s.narration}`).join("\n")}`,
+        schema: ExpertPass,
+        maxTokens: 1500,
+      }),
+    ]);
 
     const learnerPassed = learner.couldMeetGoal && learner.unclearSentences.length === 0;
     const expertPassed = expert.unsourced.length === 0 && expert.overstated.length === 0;

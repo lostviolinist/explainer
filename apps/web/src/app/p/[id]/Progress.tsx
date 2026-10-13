@@ -195,7 +195,10 @@ export function Progress({ projectId, question, initial, initialLive }: { projec
             </section>
           )}
           {view.scenes.length > 0 ? (
-            <Storyboard scenes={view.scenes} />
+            <>
+              <RoughCut scenes={view.scenes} finished={last?.stage === "done"} />
+              <Storyboard scenes={view.scenes} />
+            </>
           ) : (
             <>
               <SourceFeed sources={view.sources} active={stage === "research"} />
@@ -345,6 +348,79 @@ function MythQuiz({ items }: { items: LiveState["quiz"] }) {
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * The rough cut: the finished scenes, played back to back with their narration
+ * and captions, while the final video (music, transitions, sound) still renders.
+ * Nothing is rendered for this; it plays the scene assets straight from the bucket.
+ */
+function RoughCut({ scenes, finished }: { scenes: LiveScene[]; finished: boolean }) {
+  const [index, setIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [t, setT] = useState(0);
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const ready = scenes.filter((s) => s.done && s.audioUrl).length;
+  // The contiguous run of finished scenes from the start: that's what can be played in order.
+  let playable = 0;
+  while (playable < scenes.length && scenes[playable]!.done && scenes[playable]!.audioUrl) playable++;
+  const scene = scenes[index];
+
+  useEffect(() => {
+    const a = audio.current;
+    if (!a || !scene?.audioUrl) return;
+    if (playing) a.play().catch(() => setPlaying(false));
+    else a.pause();
+  }, [playing, index, scene?.audioUrl]);
+
+  if (finished || !playable) return null;
+
+  const next = () => {
+    if (index + 1 < playable) {
+      setIndex(index + 1);
+      setT(0);
+    } else setPlaying(false);
+  };
+  const words = scene?.words ?? [];
+  // Caption: the sentence being spoken, with the current word marked.
+  const tokens = scene?.narration.split(/\s+/).filter(Boolean) ?? [];
+  let current = -1;
+  words.forEach((w, i) => {
+    if (w.start <= t) current = i;
+  });
+  let from = 0;
+  let to = tokens.length - 1;
+  for (let i = current; i >= 0; i--) if (i < current && /[.!?]["')\]]?$/.test(tokens[i]!)) { from = i + 1; break; }
+  for (let i = Math.max(current, 0); i < tokens.length; i++) if (/[.!?]["')\]]?$/.test(tokens[i]!)) { to = i; break; }
+
+  return (
+    <section className="card roughcut">
+      <div className="section-head">
+        <h2>Rough cut</h2>
+        <span className="small">{playable} of {scenes.length} scenes · no music or transitions yet</span>
+      </div>
+      <div className="roughcut-frame">
+        {scene?.clipUrl ? <video key={scene.id} src={scene.clipUrl} muted loop autoPlay playsInline /> : scene?.stillUrl ? <img key={scene.id} src={scene.stillUrl} alt="" /> : <div className="shimmer" />}
+        {current >= 0 && (
+          <div className="roughcut-caption">
+            {tokens.slice(from, to + 1).map((w, k) => (
+              <span key={k} className={from + k === current ? "now" : from + k < current ? "said" : ""}>{w} </span>
+            ))}
+          </div>
+        )}
+        <audio ref={audio} src={scene?.audioUrl} onTimeUpdate={(e) => setT(e.currentTarget.currentTime)} onEnded={next} />
+      </div>
+      <div className="roughcut-controls">
+        <button type="button" className="btn" onClick={() => setPlaying(!playing)}>{playing ? "❚❚ Pause" : index === 0 && t === 0 ? "▶ Watch the rough cut" : "▶ Resume"}</button>
+        <span className="small">Scene {index + 1} of {scenes.length}{ready < scenes.length ? " · the rest is still being made" : ""}</span>
+        <span className="roughcut-dots">
+          {scenes.map((s, i) => (
+            <button key={s.id} type="button" className={i === index ? "on" : i < playable ? "" : "off"} disabled={i >= playable} onClick={() => { setIndex(i); setT(0); }} aria-label={`Scene ${i + 1}`} />
+          ))}
+        </span>
+      </div>
     </section>
   );
 }

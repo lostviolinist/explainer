@@ -95,11 +95,22 @@ function errorText(e: unknown): string {
   return msg.split("\n").filter((l) => l.trim() && !/^\s+at /.test(l)).slice(0, 12).join("\n").slice(0, 3000);
 }
 
-let busy = 0;
+/**
+ * Render slots: MAX_PARALLEL renders at a time, each in its own stable
+ * directory. Remotion keys its webpack cache on the bundle config (entry and
+ * output paths included), so a stable directory means the second bundle in a
+ * slot recompiles only the scene, not react/remotion/three: seconds instead of
+ * tens of seconds per attempt.
+ */
 const MAX_PARALLEL = Number(process.env.MAX_PARALLEL ?? 1);
-const queue: (() => void)[] = [];
-const slot = () => (busy < MAX_PARALLEL ? (busy++, Promise.resolve()) : new Promise<void>((r) => queue.push(() => (busy++, r()))));
-const release = () => (busy--, queue.shift()?.());
+const freeSlots = Array.from({ length: MAX_PARALLEL }, (_, i) => join(JOBS, `slot-${i}`));
+const queue: ((dir: string) => void)[] = [];
+const slot = (): Promise<string> => (freeSlots.length ? Promise.resolve(freeSlots.pop()!) : new Promise((r) => queue.push(r)));
+const release = (dir: string) => {
+  const next = queue.shift();
+  if (next) next(dir);
+  else freeSlots.push(dir);
+};
 
 export async function renderThree(
   code: string,
@@ -107,10 +118,15 @@ export async function renderThree(
   background = "#000000",
   engine: Engine = "three",
   image?: { data: Buffer; type: string },
+  /** A stable slot directory keeps the webpack cache warm; a fresh one is used when not given. */
+  slotDir?: string,
 ): Promise<{ status: number; video?: Buffer; error?: string }> {
   const problem = checkCode(code, engine);
   if (problem) return { status: 422, error: problem };
-  const dir = join(JOBS, randomUUID());
+  const dir = slotDir ?? join(JOBS, randomUUID());
+  // Start from a clean slot: everything but the bundle output goes (the cache lives in node_modules/.cache).
+  await rm(join(dir, "public"), { recursive: true, force: true });
+  await rm(join(dir, "out.mp4"), { force: true });
   await mkdir(join(dir, "public"), { recursive: true });
   const { makeCancelSignal, renderMedia, selectComposition } = await import("@remotion/renderer");
   const { cancelSignal, cancel } = makeCancelSignal();
@@ -127,11 +143,13 @@ export async function renderThree(
     await writeFile(join(dir, "Root.tsx"), engine === "motion" ? motionRoot(frames, background, imageName) : root(frames, background));
     const { bundle } = await import("@remotion/bundler");
     let serveUrl: string;
+    const t0 = Date.now();
     try {
       serveUrl = await bundle({ entryPoint: join(dir, "Root.tsx"), webpackOverride, outDir: join(dir, "bundle"), publicDir: join(dir, "public") });
     } catch (e) {
       return { status: 422, error: `The code did not compile: ${errorText(e)}` };
     }
+    const t1 = Date.now();
     const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || null;
     const chromiumOptions = engine === "three" ? { gl: "swangle" as const } : {};
     const out = join(dir, "out.mp4");
@@ -142,10 +160,12 @@ export async function renderThree(
       if (/cancel/i.test(errorText(e))) return { status: 504, error: `Rendering took longer than ${TIMEOUT_MS / 1000}s; simplify the scene (fewer meshes, cheaper materials).` };
       return { status: 422, error: `The scene failed while rendering: ${errorText(e)}` };
     }
+    console.log(`[three] ${engine} ${durationS}s: bundled in ${((t1 - t0) / 1000).toFixed(1)}s, rendered in ${((Date.now() - t1) / 1000).toFixed(1)}s`);
     return { status: 200, video: await readFile(out) };
   } finally {
     clearTimeout(timer);
-    await rm(dir, { recursive: true, force: true });
+    if (slotDir) await rm(join(dir, "public"), { recursive: true, force: true });
+    else await rm(dir, { recursive: true, force: true });
   }
 }
 
@@ -155,6 +175,9 @@ function json(res: http.ServerResponse, status: number, body: unknown) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // Old job dirs and webpack caches from previous runs: start clean (the slots warm up again on first use).
+  await rm(JOBS, { recursive: true, force: true });
+  await rm(resolve(dirname(fileURLToPath(import.meta.url)), "../../node_modules/.cache/webpack"), { recursive: true, force: true });
   http
     .createServer(async (req, res) => {
       if (req.method === "GET" && req.url === "/health") {
@@ -184,15 +207,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         return json(res, 400, { error: "expected {engine?, code, duration_s, background?, image?}" });
       }
       if (!(duration >= 1 && duration <= 90)) return json(res, 400, { error: "duration_s must be 1–90" });
-      await slot();
+      const dir = await slot();
       try {
-        const r = await renderThree(code, duration, background, engine, image);
+        const r = await renderThree(code, duration, background, engine, image, dir);
         if (r.status !== 200) return json(res, r.status, { error: r.error });
         res.writeHead(200, { "content-type": "video/mp4", "content-length": r.video!.length }).end(r.video);
       } catch (e) {
         json(res, 500, { error: errorText(e) });
       } finally {
-        release();
+        release(dir);
       }
     })
     .listen(PORT, () => console.log(`[three] listening on :${PORT}`));

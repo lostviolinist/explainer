@@ -75,10 +75,13 @@ services:
     image: explainer-app:local
     working_dir: /app/apps/web
     command: ["node", "--import", "tsx", "/app/packages/render/src/animator/three-server.ts"]
+    environment:
+      # Scenes render two at a time; each uses two Chrome tabs. Give it cores if you have them.
+      MAX_PARALLEL: 2
     networks: [sandbox]
-    mem_limit: 3g
-    cpus: 2
-    pids_limit: 512
+    mem_limit: 4g
+    cpus: 4
+    pids_limit: 768
 
   inngest:
     image: inngest/inngest

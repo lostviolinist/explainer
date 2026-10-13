@@ -96,6 +96,7 @@ animSpec: labelled-diagram (labels with the exact onScreenTerms and the narratio
     user: `Scene ${scene.id} (${scene.beat}, ${scene.visualType}): ${scene.visualDirection}\nNarration: ${scene.narration}\nOn-screen terms: ${scene.onScreenTerms.join(", ")}${cast.length ? `\nRecurring things:\n${castLines(cast)}` : ""}`,
     schema: Planned,
     maxTokens: 1200,
+    effort: "low",
   });
   const modelKey = scene.visualType === "clip" ? "generatedClip" : scene.visualType === "reference-seq" ? "referenceSequence" : scene.visualType === "still-animated" ? "animatedStill" : "still";
   return RenderSpec.parse({
@@ -166,6 +167,7 @@ export async function deliveryFor(ctx: Ctx, brief: Brief, scene: Scene): Promise
       user: scene.narration,
       schema: Delivery,
       maxTokens: 800,
+      effort: "low",
     });
     return sameWords(text, scene.narration) && text !== scene.narration ? text : null;
   } catch {

@@ -7,7 +7,7 @@
  * Both write MP4 + SRT through the provided `upload` callback and return URLs.
  */
 import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { cpus, tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
@@ -68,6 +68,21 @@ export async function ensureRenderBrowser(): Promise<string> {
   );
 }
 
+/**
+ * Speed settings for the local render. Frames are painted in parallel Chrome tabs
+ * (one per core by default; Remotion's own default is half the cores) and encoded
+ * with a fast x264 preset: for flat graphics the difference from "medium" is
+ * invisible, the time saved is not. Override with RENDER_CONCURRENCY,
+ * RENDER_X264_PRESET and RENDER_CRF.
+ */
+export const RENDER_SPEED = {
+  concurrency: Number(process.env.RENDER_CONCURRENCY) || cpus().length,
+  x264Preset: (process.env.RENDER_X264_PRESET || "veryfast") as "ultrafast" | "superfast" | "veryfast" | "faster" | "fast" | "medium" | "slow",
+  crf: Number(process.env.RENDER_CRF) || 20,
+  // Output size as a fraction of 1920×1080: frame capture is the bottleneck and scales with pixels (0.6667 = 720p, about twice as fast).
+  scale: Math.min(1, Math.max(0.25, Number(process.env.RENDER_SCALE) || 1)),
+};
+
 export class LocalRenderer {
   private serveUrl: Promise<string> | null = null;
   constructor(private upload: Upload) {}
@@ -98,9 +113,8 @@ export class LocalRenderer {
       codec: "h264",
       outputLocation: out,
       inputProps: props,
-      crf: 18,
+      ...RENDER_SPEED,
       audioBitrate: "192k",
-      concurrency: null,
       browserExecutable,
     });
     const srt = buildSrt(props);
