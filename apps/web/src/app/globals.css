@@ -175,6 +175,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none !importan
 .badge.ready { color: var(--green); }
 .badge.work { color: var(--ink); }
 .spin { width: 9px; height: 9px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.25); border-top-color: var(--pink); animation: spin .8s linear infinite; }
+.ask button .spin { display: inline-block; vertical-align: -1px; width: 12px; height: 12px; margin-right: 8px; border-color: rgba(18, 13, 31, 0.25); border-top-color: #120d1f; }
+.ask button:disabled[aria-busy="true"] { opacity: 0.85; cursor: progress; }
+.starting { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 14px; animation: appear .25s ease; }
+.starting .spin { width: 12px; height: 12px; }
 .programmatic span { display: block; font-size: 11px; font-weight: 500; color: rgba(255, 255, 255, 0.6); margin-top: 4px; }
 .programmatic { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; font-weight: 700; letter-spacing: 0.02em; color: rgba(255, 255, 255, 0.85); background: linear-gradient(135deg, rgba(139, 123, 255, 0.35), rgba(255, 111, 165, 0.25)); }
 .shimmer { position: absolute; inset: 0; background: linear-gradient(100deg, #121219 30%, #1d1d28 50%, #121219 70%); background-size: 300% 100%; animation: shimmer 1.6s ease-in-out infinite; }

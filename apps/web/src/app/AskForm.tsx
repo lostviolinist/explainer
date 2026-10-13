@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { ask } from "./actions";
 
 type Check = { name: string; status: "ok" | "warn" | "fail"; detail: string; fix?: string };
@@ -37,6 +38,33 @@ const STYLES: { id: Style; name: string; blurb: string; icon: React.ReactNode }[
     ),
   },
 ];
+
+/** The submit button, and the "starting" state while the server sets the run up (it can take a few seconds). */
+function Submit({ blocked }: { blocked: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={blocked || pending} title={blocked ? "Not available right now" : undefined} aria-busy={pending}>
+      {pending ? (
+        <>
+          <span className="spin" aria-hidden="true" /> Starting…
+        </>
+      ) : (
+        "Explain it"
+      )}
+    </button>
+  );
+}
+
+/** Dims the form and says what's happening while the run is being set up. */
+function Starting() {
+  const { pending } = useFormStatus();
+  if (!pending) return null;
+  return (
+    <div className="starting" role="status">
+      <span className="spin" aria-hidden="true" /> Setting up your video — the progress page opens in a moment.
+    </div>
+  );
+}
 
 /**
  * The question box. The setup check runs quietly in the background: visitors
@@ -76,8 +104,9 @@ export function AskForm() {
       <form action={ask}>
         <div className="ask">
           <input name="question" placeholder="why do leaves change colour in autumn?" autoFocus required minLength={3} maxLength={500} />
-          <button type="submit" disabled={blocked} title={blocked ? "Not available right now" : undefined}>Explain it</button>
+          <Submit blocked={blocked} />
         </div>
+        <Starting />
         <input type="hidden" name="style" value={style} />
         <div className="styles" role="radiogroup" aria-label="Video style">
           {STYLES.map((s) => {
