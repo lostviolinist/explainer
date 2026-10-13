@@ -28,7 +28,7 @@ function scriptedLLM(answers: [RegExp, unknown][]): LLM {
       return a.schema.parse(hit[1]);
     },
     async vision<T>(a: { schema: z.ZodType<T> }) {
-      return a.schema.parse({ matchesDirection: 0.9, styleMatch: 0.9, hasText: false, notes: "ok" });
+      return a.schema.parse({ matchesDirection: 0.9, styleMatch: 0.9, clarity: 0.9, hasText: false, notes: "ok" });
     },
   };
   (llm as any).calls = calls;
@@ -130,7 +130,7 @@ test("clip QA scores frames sampled from the clip, not the video file", async ()
   const llm = scriptedLLM([]);
   llm.vision = async <T,>(a: { imageUrls: string[]; schema: z.ZodType<T> }) => {
     visionCalls.push(a.imageUrls);
-    return a.schema.parse({ matchesDirection: 0.9, styleMatch: 0.9, hasText: false, notes: "ok" });
+    return a.schema.parse({ matchesDirection: 0.9, styleMatch: 0.9, clarity: 0.9, hasText: false, notes: "ok" });
   };
   const ctx = ctxWith(llm);
   const style = ctx.style;
@@ -264,13 +264,13 @@ function codeCtx(opts: { render: (engine: Engine, code: string, durationS: numbe
   const llm: LLM = {
     async json<T>(a: { system: string; user: string; schema: z.ZodType<T> }) {
       prompts.push({ system: a.system, user: a.user });
-      if (/plan the shots/.test(a.system)) return a.schema.parse({ shots: [{ at: 0.5, action: "the sun grows in on the left" }, { at: 2, action: "a ray draws on to the eye" }] });
+      if (/plan the shots/.test(a.system)) return a.schema.parse({ subject: "a ray of sunlight", glance: "a ray bouncing off beads into an eye", shots: [{ at: 0.5, action: "the sun grows in on the left" }, { at: 2, action: "a ray draws on to the eye" }] });
       return a.schema.parse({ code: `class GeneratedScene(Scene):\n    # attempt ${prompts.length}\n    def construct(self): pass`, sounds: [{ at: 2.5, kind: "pop" }, { at: 0.5, kind: "whoosh" }, { at: 0.7, kind: "tick" }, { at: 99, kind: "chime" }] });
     },
     async vision<T>(a: { system: string; schema: z.ZodType<T> }) {
       visionPrompts.push(a.system);
       const q = opts.vision?.(++visionCalls) ?? 0.9;
-      return a.schema.parse({ matchesDirection: q, styleMatch: q, hasText: true, notes: q < 0.7 ? "the equation runs off the right edge" : "ok" });
+      return a.schema.parse({ matchesDirection: q, styleMatch: q, clarity: q, hasText: true, notes: q < 0.7 ? "the equation runs off the right edge" : "ok" });
     },
   };
   const ctx = ctxWith(llm);
@@ -349,7 +349,7 @@ test("styles offer their own scene types, limited to running engines", () => {
 test("a diagram whose stills are all rejected keeps the best one instead of going blank", async () => {
   const llm = scriptedLLM([]);
   let n = 0;
-  llm.vision = async <T,>(a: { schema: z.ZodType<T> }) => a.schema.parse({ matchesDirection: ++n === 1 ? 0.6 : 0.4, styleMatch: 0.8, hasText: n === 2, notes: "labels baked in" });
+  llm.vision = async <T,>(a: { schema: z.ZodType<T> }) => a.schema.parse({ matchesDirection: ++n === 1 ? 0.6 : 0.4, styleMatch: 0.8, clarity: 0.8, hasText: n === 2, notes: "labels baked in" });
   const ctx = ctxWith(llm);
   let jobs = 0;
   ctx.hedra = { run: async (model: string) => ({ job_id: `j${++jobs}`, model, status: "COMPLETED", error: null, cost: 0.08, currency: "USD", outputs: [{ status: "COMPLETED", asset_id: `asset_${jobs}`, voice_id: null, url: `https://h/${jobs}`, content_type: "image/jpeg", width: 2048, height: 1152, duration_ms: null, fps: null, error: null }] }) } as any;
@@ -390,7 +390,7 @@ function diagramCtx(render: () => { ok: true } | { ok: false; error: string }, p
       layoutCalls.push(a.imageUrls[0]!);
       return a.schema.parse({ parts });
     }
-    return a.schema.parse({ matchesDirection: 0.9, styleMatch: 0.9, hasText: false, notes: "ok" });
+    return a.schema.parse({ matchesDirection: 0.9, styleMatch: 0.9, clarity: 0.9, hasText: false, notes: "ok" });
   };
   ctx.hedra = { run: async (model: string) => ({ job_id: "j1", model, status: "COMPLETED", error: null, cost: 0.08, currency: "USD", outputs: [{ status: "COMPLETED", asset_id: "asset_still", voice_id: null, url: "https://h/1", content_type: "image/png", width: 1920, height: 1080, duration_ms: null, fps: null, error: null }] }) } as any;
   (ctx.mirror as any).mirror = async (_p: string, o: any) => ({ hedraAssetId: o.asset_id, url: `http://localhost:9000/explainer-assets/${o.asset_id}`, contentType: o.content_type, width: o.width, height: o.height, durationMs: null });

@@ -131,8 +131,21 @@ const HOUSE = {
 };
 
 /** Before the code: the shots, cue by cue. Shot lists make the code build the scene instead of showing it. */
-export const SHOT_LIST_RULES = `You direct one scene of a flat-illustration explainer (2D motion graphics, 1920×1080). Before the code is written, plan the shots: what is on screen and what moves, cue by cue, in the order the narration mentions things.
-Rules: 6–10 shots. Each names its moment (seconds from the scene start, matching the narration timeline), what enters / moves / transforms / reacts / leaves, where (left, centre, right, top; pixel positions welcome), and which recurring cast member it is. Show before you name. Build on what is already on screen rather than clearing it. The subject of the sentence being spoken is the thing that moves; everything else holds or dims. One or two camera moves at most (zoom into a detail, back out for the whole). End on the key object alone. Keep the bottom-right caption box empty. Short, concrete actions, no prose.`;
+export const SHOT_LIST_RULES = `You direct one scene of a flat-illustration explainer (2D motion graphics, 1920×1080). Before the code is written, decide what the scene IS and plan the shots.
+
+FIRST, the one reading. subject: the single thing this scene is about (one noun phrase). glance: what a first-time viewer sees and understands in the first second, in at most 8 words ("a ray bouncing off tiny beads into an eye"). If you can't say it in 8 words, the scene is too complicated; simplify until you can.
+
+THEN the shots: 4–8. Each names its moment (seconds from the scene start, matching the narration timeline), what enters / moves / transforms / reacts / leaves, where (left, centre, right, top), and which recurring cast member it is.
+
+RULES OF CLARITY (these matter more than completeness)
+- One idea per scene. Show only what the narration is saying right now; never the whole system, architecture or history at once.
+- Draw things, not diagrams of things: a word is a word card, a person is a person, light is a moving dot, heat is a glow. Boxes-and-arrows only when the narration itself is about boxes and arrows.
+- At most one subject and two or three supporting things on screen at any moment; labels only for what the narration names (≤ 4 words each).
+- A shot can be an emphasis or a camera move rather than a new object; prefer that to adding things.
+- Show before you name. Build on what is on screen; what is no longer talked about leaves.
+- The subject of the sentence being spoken is the thing that moves; everything else holds or dims.
+- One or two camera moves at most. End on the key object alone. Keep the bottom-right caption box empty.
+Short, concrete actions, no prose.`;
 
 const KIT_ICONS = "sun, moon, eye, molecule, leaf, person, people, cloud, gear, clock, drop, star, box, heart, bulb, earth, bolt, arrow, check, cross, question, flask, wave, mountain, book, house, tree, brain, rocket, magnet, battery, thermometer, magnifier, coin, dna";
 
@@ -165,7 +178,8 @@ THE KIT (import what you use from "./Kit"):
 - <Shape d fill stroke width at over until enter exit opacity /> one path on the timeline. enter: "draw" (default: the stroke draws on, then the fill arrives — Create / DrawBorderThenFill), "fade", "grow", "pop" (overshoot), "slide", "none". exit at \`until\`: "fade" (default), "shrink", "undraw".
 - <Icon name x y size at over enter until fill stroke /> line icons: ${KIT_ICONS}. Give fill for a solid look.
 - <Group x y origin at enter exit until> several shapes entering and leaving together (enter "fade" | "grow" | "pop" | "slide"; origin is the point it grows from).
-- <Label x y anchor color ink size at until>text</Label> for ALL text: it sizes itself to its words (never draw a rect behind text, never SVG <text>). anchor "start" | "middle" | "end"; color "none" for plain text (ink ${h.ink} on this background). ≤ 4 words, 36–52 px.
+- <Label x y anchor color ink size at until>text</Label> for ALL single labels: it sizes itself to its words (never draw a rect behind text; SVG <text> is rejected). anchor "start" | "middle" | "end"; color "none" for plain text (ink ${h.ink} on this background). ≤ 4 words, 36–52 px.
+- <Row x y anchor items={["one", "two", ...]} gap at lag until emphasize={[{ index, at, until }]} /> a row of words or items as self-sizing pills laid out by the browser (they can never overlap or spill); items pop in one after another; emphasize lights one up while its words are spoken. <Column> is the same, stacked. Never place a list of pills by hand.
 - <Move from to at over> or <Move path at over> moves its children (draw them at \`from\` / the path's start): .animate.shift / MoveAlongPath.
 - <Transform from to at over fill stroke width /> one path becomes another from \`at\` (ReplacementTransform); show the first shape until then with <Shape d={from} until={at} exit="none" />.
 - <Indicate at origin scale> a brief grow-and-back of its children; <Circumscribe x y w h at hold stroke /> a ring draws around a box, holds, undraws; <Flash x y at /> a burst; <Highlight x y w h at until /> dims everything but a box (spotlight).
@@ -173,6 +187,7 @@ THE KIT (import what you use from "./Kit"):
 - useT() the current second; prog(t, at, over, ease) 0→1 for anything custom; PALETTE.yellow/blue/red/green/ink.
 
 HOW TO DIRECT IT (what makes a scene feel built, not shown)
+- Clarity first: the scene must read as its "glance" line at first sight. At most ${14} drawn elements in the whole scene (a <Row> counts as one; more is rejected): one subject, a few supporting things, labels only for what the narration names. Draw things, not diagrams of things.
 - Follow the shot list and the narration timeline: a thing enters within 0.3 s of its words; what is being talked about is the thing that moves.
 - Show before you name: the shape enters (draw / grow), its Label pops about 0.4 s later.
 - Build, don't cut: add to what is on screen; Transform one thing into the next; Move things instead of replacing them. Fade out (until) only what is no longer needed.

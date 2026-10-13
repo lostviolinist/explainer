@@ -162,7 +162,7 @@ function answer(system: string, user: string): unknown {
     return { code: broken ? MANIM_CODE.replace("Create(axes)", "Creat(axes)") : MANIM_CODE, sounds: [{ at: 1, kind: "whoosh" }, { at: 2.5, kind: "pop" }] };
   }
   if (/You write a React Three Fiber scene/.test(system)) return { code: THREE_CODE, sounds: [] };
-  if (/plan the shots/.test(system)) return { shots: [{ at: 0.2, action: "the sun grows in on the left" }, { at: 1.5, action: "a ray draws on, bouncing off two molecules, to the eye" }, { at: 3, action: "dots flow along the ray" }] };
+  if (/plan the shots/.test(system)) return { subject: "a ray of sunlight", glance: "a ray bouncing off beads into an eye", shots: [{ at: 0.2, action: "the sun grows in on the left" }, { at: 1.5, action: "a ray draws on, bouncing off two molecules, to the eye" }, { at: 3, action: "dots flow along the ray" }] };
   if (/motion-graphics module/.test(system)) {
     if (!/Shot list/.test(user)) throw new Error("motion code was asked for without a shot list");
     // Overlay mode lists the still's parts in pixels; point at the first one.
@@ -220,7 +220,7 @@ function fakeOpenAI(log: string[], bad: string[]) {
       const n = ++visionCalls;
       log.push(`llm.vision ${images.length} image(s)`);
       const ok = n !== 3; // the 3rd check fails once, to exercise the retry path
-      ans = { matchesDirection: ok ? 0.9 : 0.3, styleMatch: 0.9, hasText: false, notes: ok ? "ok" : "wrong metaphor" };
+      ans = { matchesDirection: ok ? 0.9 : 0.3, styleMatch: 0.9, clarity: 0.9, hasText: false, notes: ok ? "ok" : "wrong metaphor" };
     } else {
       log.push(`llm.json ${where}`);
       ans = answer(String(body.instructions ?? ""), user);

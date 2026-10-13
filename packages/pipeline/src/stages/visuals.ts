@@ -29,9 +29,12 @@ export const Planned = z.object({
 export const VisionScore = z.object({
   matchesDirection: z.number().min(0).max(1),
   styleMatch: z.number().min(0).max(1),
+  /** Would a first-time viewer understand what this shows at a glance? Clutter and abstraction score low. */
+  clarity: z.number().min(0).max(1),
   hasText: z.boolean(),
   notes: z.string(),
 });
+const CLEAR = 0.6;
 
 const PASS = 0.7;
 
@@ -45,8 +48,12 @@ const DEMOTE: Partial<Record<Scene["visualType"], Scene["visualType"]>> = {
 /** What the model returns for a code scene: the code, and the sound effects it wants, cued in seconds. */
 export const SceneCode = z.object({ code: z.string(), sounds: z.array(SoundCue) });
 
-/** The shots of a motion scene, planned before the code is written. */
-export const ShotList = z.object({ shots: z.array(z.object({ at: z.number(), action: z.string() })) });
+/** The shots of a motion scene, planned before the code is written, and the one reading it must have. */
+export const ShotList = z.object({
+  subject: z.string(),
+  glance: z.string(),
+  shots: z.array(z.object({ at: z.number(), action: z.string() })),
+});
 
 /** Sound cues in order, inside the scene, at most eight and not on top of each other. */
 export function tidySounds(sounds: SoundCue[], durationS: number): SoundCue[] {
@@ -133,7 +140,7 @@ async function attemptGeneration(qa: QaResult[], check: QaResult["check"], attem
 
 async function scoreFrames(ctx: Ctx, scene: Scene, imageUrls: string[]) {
   return ctx.llm.vision({
-    system: `Score frames from an explainer video scene. matchesDirection: does the picture show what the direction describes (metaphor and details)? styleMatch: flat vector illustration, limited palette, no outlines, no gradients except glow, bottom-right clear? hasText: any legible text or labels baked into the image? Scores 0–1.`,
+    system: `Score frames from an explainer video scene. matchesDirection: does the picture show what the direction describes (metaphor and details)? styleMatch: flat vector illustration, limited palette, no outlines, no gradients except glow, bottom-right clear? clarity: would a first-time viewer understand what it shows at a glance (one clear subject; cluttered or abstract scores low)? hasText: any legible text or labels baked into the image? Scores 0–1.`,
     user: `Direction: ${scene.visualDirection}`,
     imageUrls,
     schema: VisionScore,
@@ -354,7 +361,7 @@ async function scoreCode(ctx: Ctx, scene: Scene, engine: Engine, frames: string[
     ? ` The ${frames.length} frames are in time order, at t = ${motion.times.map((x) => x.toFixed(1)).join(", ")} s. Judge the MOTION: does each frame show what the shot list says is on screen at that moment, and is something visibly different between consecutive frames (nothing static for long)? Count a frame that still shows an earlier shot, or an empty frame, against matchesDirection.`
     : "";
   return ctx.llm.vision({
-    system: `Score frames from an animated explainer scene: ${look}.${timing} matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no text spilling out of its pill or box, no overlapping text or objects, good contrast, the bottom-right corner clear for captions? hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix.`,
+    system: `Score frames from an animated explainer scene: ${look}.${timing} matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no text spilling out of its pill or box, no overlapping text or objects, good contrast, the bottom-right corner clear for captions? clarity: would a first-time viewer understand what it shows at a glance? One subject and a few supporting things score high; a frame crowded with boxes, arrows, bars and labels, or an abstract diagram standing in for the real thing, scores low even if it is "correct". hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix, and what to remove.`,
     user: `Direction: ${scene.visualDirection}\nNarration: ${scene.narration}${motion?.shots ?? ""}`,
     imageUrls: frames,
     schema: VisionScore,
@@ -417,7 +424,7 @@ async function renderCodeScene(
   if (engine === "motion") {
     await progress(`planning the shots for scene ${n}`, 0.3);
     const plan = await ctx.llm.json({ system: SHOT_LIST_RULES, user: brief0, schema: ShotList, maxTokens: 1500 });
-    shots = `\n\nShot list (follow it; seconds from the start of the scene):\n${plan.shots.slice(0, 12).map((s) => `[${s.at.toFixed(1)} s] ${s.action}`).join("\n")}`;
+    shots = `\n\nAt first glance this scene reads as: ${plan.glance}\nSubject: ${plan.subject}\n\nShot list (follow it; seconds from the start of the scene):\n${plan.shots.slice(0, 10).map((s) => `[${s.at.toFixed(1)} s] ${s.action}`).join("\n")}`;
   }
 
   let feedback = "";
@@ -440,13 +447,14 @@ async function renderCodeScene(
     const frames = await ctx.frames.sample(mirrored.url, nFrames).catch(() => null);
     const score = frames
       ? await scoreCode(ctx, scene, engine, frames, Boolean(overlay), engine === "motion" ? { times: sampleTimes(durationS, nFrames), shots } : undefined)
-      : { matchesDirection: 0.7, styleMatch: 0.7, hasText: false, notes: "frames unavailable; accepted unchecked" };
-    const s = Math.min(score.matchesDirection, score.styleMatch);
-    const ok = score.matchesDirection >= PASS - 0.1 && score.styleMatch >= PASS;
+      : { matchesDirection: 0.7, styleMatch: 0.7, clarity: 0.7, hasText: false, notes: "frames unavailable; accepted unchecked" };
+    // Ranked and passed on the weakest of the three; a scene that isn't clear at a glance doesn't pass however correct it is.
+    const s = Math.min(score.matchesDirection, score.styleMatch, score.clarity);
+    const ok = score.matchesDirection >= PASS - 0.1 && score.styleMatch >= PASS && score.clarity >= CLEAR;
     qa.push({ check: "visual-matches-direction", passed: ok, score: s, attempts: attempt, fallback: null, notes: score.notes });
     if (!best || s > best.score) best = { asset: mirrored, score: s, sounds: tidySounds(sounds, durationS) };
     if (ok) break;
-    feedback = `\n\nYOUR PREVIOUS CODE RENDERED, but a reviewer looking at frames said: ${score.notes}\nImprove it and return the full code.\n--- code ---\n${code}`;
+    feedback = `\n\nYOUR PREVIOUS CODE RENDERED, but a reviewer looking at frames said: ${score.notes}${score.clarity < CLEAR ? " It was not clear at a glance: remove things rather than add; one subject, a few supporting details." : ""}\nImprove it and return the full code.\n--- code ---\n${code}`;
   }
 
   if (!best && engine === "manim" && !overlay) {

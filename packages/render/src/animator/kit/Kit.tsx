@@ -446,6 +446,98 @@ export function Label({ x, y, children, color = PALETTE.yellow, ink = PALETTE.in
   );
 }
 
+export type RowProps = {
+  items: string[];
+  x: number;
+  y: number;
+  /** Which point sits at (x, y): the row's left-middle, centre or right-middle (a Column's top-left, top-centre, top-right). */
+  anchor?: "start" | "middle" | "end";
+  gap?: number;
+  /** Pill colour; "none" for plain words. */
+  color?: string;
+  ink?: string;
+  size?: number;
+  at?: number;
+  /** Seconds between one item popping in and the next. */
+  lag?: number;
+  over?: number;
+  until?: number;
+  /** Items to light up (grow a little, yellow ring) while their words are spoken. */
+  emphasize?: { index: number; at: number; until?: number }[];
+  vertical?: boolean;
+};
+
+/**
+ * A row (or column) of words or short items as self-sizing pills, laid out by
+ * the browser: they can never overlap or spill. Items pop in one after another.
+ */
+export function Row({ items, x, y, anchor = "start", gap = 16, color = PALETTE.blue, ink = PALETTE.ink, size = 40, at = 0, lag = 0.12, over = 0.5, until, emphasize, vertical = false }: RowProps) {
+  const t = useT();
+  const inStage = useContext(StageCtx);
+  if (t < at) return null;
+  if (until !== undefined && t >= until + EXIT_OVER) return null;
+  const q = until !== undefined && t >= until ? clamp01((t - until) / EXIT_OVER) : 0;
+  const bh = vertical ? H : size * 3;
+  const pill = color !== "none";
+  const content = (
+    <div
+      style={{
+        position: "absolute",
+        left: anchor === "middle" ? "50%" : anchor === "end" ? undefined : 0,
+        right: anchor === "end" ? 0 : undefined,
+        top: vertical ? 0 : "50%",
+        transform: `translate(${anchor === "middle" ? "-50%" : "0"}, ${vertical ? "0" : "-50%"})`,
+        display: "flex",
+        flexDirection: vertical ? "column" : "row",
+        alignItems: vertical ? (anchor === "middle" ? "center" : anchor === "end" ? "flex-end" : "flex-start") : "center",
+        gap,
+        opacity: 1 - q,
+        fontFamily: "Inter, system-ui, sans-serif",
+      }}
+    >
+      {items.map((item, i) => {
+        const p = prog(t, at + i * lag, over, "spring");
+        const em = emphasize?.some((e) => e.index === i && t >= e.at && (e.until === undefined || t < e.until));
+        return (
+          <div
+            key={i}
+            style={{
+              padding: pill ? `${Math.round(size * 0.22)}px ${Math.round(size * 0.55)}px` : 0,
+              borderRadius: 999,
+              background: pill ? color : "transparent",
+              color: ink,
+              fontSize: size,
+              fontWeight: 700,
+              lineHeight: 1.15,
+              whiteSpace: "nowrap",
+              transform: `scale(${Math.max(0.001, p) * (em ? 1.12 : 1)})`,
+              opacity: clamp01(p * 3),
+              boxShadow: em ? `0 0 0 6px ${PALETTE.yellow}` : undefined,
+            }}
+          >
+            {item}
+          </div>
+        );
+      })}
+    </div>
+  );
+  const bx = anchor === "middle" ? x - W / 2 : anchor === "end" ? x - W : x;
+  const by = vertical ? y : y - bh / 2;
+  if (inStage) {
+    return (
+      <foreignObject x={bx} y={by} width={W} height={bh} style={{ overflow: "visible" }}>
+        <div style={{ position: "relative", width: W, height: bh }}>{content}</div>
+      </foreignObject>
+    );
+  }
+  return <div style={{ position: "absolute", left: bx, top: by, width: W, height: bh, pointerEvents: "none" }}>{content}</div>;
+}
+
+/** A Row stacked vertically: (x, y) is its top-left, top-centre or top-right. */
+export function Column(props: Omit<RowProps, "vertical">) {
+  return <Row {...props} vertical />;
+}
+
 /** A number counting from `from` to `to` (a Label). */
 export function Counter({ from, to, at, over = 1.5, decimals = 0, prefix = "", suffix = "", ...label }: { from: number; to: number; at: number; over?: number; decimals?: number; prefix?: string; suffix?: string } & Omit<LabelProps, "children" | "at" | "over">) {
   const t = useT();

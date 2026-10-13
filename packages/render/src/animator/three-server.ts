@@ -40,6 +40,9 @@ const ALLOWED_IMPORTS: Record<Engine, Set<string>> = {
 const KIT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "kit");
 const KIT_FILES = ["Kit.tsx", "Label.tsx"];
 
+/** Clutter guard: a scene that needs more than this many drawn things won't read at a glance. */
+const MAX_ELEMENTS = 14;
+const KIT_ELEMENTS = /<(Shape|Icon|Label|Row|Column|Bar|Counter|Connect|Dots|Transform|Circumscribe|Highlight|Flash)\b/g;
 const FORBIDDEN = /\b(fetch|XMLHttpRequest|WebSocket|EventSource|importScripts|eval|Function)\s*\(|\bnew\s+(Worker|Function)\b|\brequire\s*\(|\bimport\s*\(/;
 
 /** Static checks before anything runs: module shape and imports. */
@@ -51,7 +54,12 @@ export function checkCode(code: string, engine: Engine = "three"): string | null
   }
   const bad = code.match(FORBIDDEN);
   if (bad) return `"${bad[0].trim()}" is not allowed: the scene must not load anything or run dynamic code.`;
-  if (engine === "motion" && !/<Stage[\s>/]/.test(code)) return 'The scene must be wrapped in <Stage> from "./Kit" (the camera and the still live there).';
+  if (engine === "motion") {
+    if (!/<Stage[\s>/]/.test(code)) return 'The scene must be wrapped in <Stage> from "./Kit" (the camera and the still live there).';
+    if (/<(text|foreignObject)\b/.test(code)) return "No SVG <text> or <foreignObject>: all text goes through <Label>, <Row> or <Column> from ./Kit, which size themselves so words never spill out of their boxes.";
+    const drawn = (code.match(KIT_ELEMENTS) ?? []).length;
+    if (drawn > MAX_ELEMENTS) return `Too much on screen: ${drawn} drawn elements. Keep to ${MAX_ELEMENTS} or fewer so the scene reads at a glance: one subject, a few supporting details, labels only for what the narration names. A <Row> of words counts as one; many small things of a kind should be one <Dots> or a .map().`;
+  }
   return null;
 }
 
