@@ -98,6 +98,7 @@ Rules for hedraPrompt (null for visualType chart/text, since those are fully pro
 - Start with "Flat vector illustration, detailed." Then the scene's metaphor and its supporting details from the visual direction. End with "No text, no labels. Leave the bottom-right quarter clear."
 - Describe one action for a clip; still-animated prompts describe the still only.
 - Never ask for legible text; labels are composited.
+- Real things in a real scene, never a diagram: no flowcharts, empty boxes, nodes, arrows or mind maps. If the direction is abstract (a model, a process, data), draw the concrete metaphor it names.
 - Recurring things (below) are described the same way in every prompt, so they're recognisable from scene to scene.
 animSpec: labelled-diagram (labels with the exact onScreenTerms and the narration word each appears on), chart (series from the cited claim; claimId), kinetic-text (lines with cue words), path-reveal (ids with cue words) or none.`,
     user: `Scene ${scene.id} (${scene.beat}, ${scene.visualType}): ${scene.visualDirection}\nNarration: ${scene.narration}\nOn-screen terms: ${scene.onScreenTerms.join(", ")}${cast.length ? `\nRecurring things:\n${castLines(cast)}` : ""}`,

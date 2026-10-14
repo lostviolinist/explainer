@@ -21,6 +21,7 @@ Good to know:
 - **Which version is running** is written at the bottom of the home page (`build 83547ba (main) · date`). After `git pull`, run `docker compose up --build` again and that line should change.
 - **To update:** `git pull`, then `docker compose up --build`. To stop everything: `docker compose down`.
 - **Something failed?** http://localhost:8288 shows every step of every run with its logs and errors.
+- **A video came out as still pictures with labels stacked in a corner?** The animation sandbox wasn't running when it was made. The app now refuses to start an Illustrated video in that state (the style shows "unavailable"); `/?setup` says why, and `docker compose logs three` has the details.
 
 Keys and credits are the only things that can stop a run. The app checks them quietly before it starts one.
 

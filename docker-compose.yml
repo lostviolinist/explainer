@@ -11,6 +11,7 @@
 
 services:
   web:
+    restart: unless-stopped
     build: .
     image: explainer-app:local
     ports: ["3000:3000", "9000:9000"]
@@ -36,6 +37,7 @@ services:
       postgres: { condition: service_healthy }
 
   postgres:
+    restart: unless-stopped
     image: postgres:16
     environment: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: explainer }
     ports: ["5432:5432"]
@@ -62,6 +64,7 @@ services:
 
   # 3Blue1Brown-style scenes: the official Manim image (Manim, LaTeX, ffmpeg) + a render server.
   manim:
+    restart: unless-stopped
     build: ./animator/manim
     networks: [sandbox]
     mem_limit: 3g
@@ -80,10 +83,11 @@ services:
       MAX_PARALLEL: 2
     networks: [sandbox]
     mem_limit: 4g
-    cpus: 4
     pids_limit: 768
+    restart: unless-stopped
 
   inngest:
+    restart: unless-stopped
     image: inngest/inngest
     command: inngest dev -u http://web:3000/api/inngest
     ports: ["8288:8288"]

@@ -124,7 +124,7 @@ export async function runPreflight(): Promise<Check[]> {
     }),
 
     run(MANIM_CHECK, "Start the `manim` service: docker compose up --build.", () => sandbox("MANIM_URL", "the 3Blue1Brown style is off")),
-    run(THREE_CHECK, "Start the `three` service: docker compose up --build.", () => sandbox("THREE_URL", "illustrated scenes won't get motion graphics, animated callouts or 3D")),
+    run(THREE_CHECK, "Start the `three` service: docker compose up --build, then `docker compose logs three` if it keeps failing.", () => sandbox("THREE_URL", "the Illustrated style is off (its animations need this sandbox)")),
   ]);
 }
 

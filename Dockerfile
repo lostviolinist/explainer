@@ -22,11 +22,14 @@ RUN pnpm install --frozen-lockfile
 # The renderer bundles packages/render/src at runtime, so the whole source stays in the image.
 COPY . .
 RUN pnpm --filter @explainer/web build
-# Remotion's headless Chrome, fetched now rather than on the first render. It is cached
-# under the nearest package.json to the working directory, so install it from apps/web.
-# If the download fails here, the app fetches it on its startup check instead.
-RUN cd apps/web && node -e "require('/app/packages/render/node_modules/@remotion/renderer').ensureBrowser()" \
-    || echo "Remotion browser not downloaded at build time; the app will fetch it on first check."
+# Remotion's headless Chrome, fetched now. It is cached under the nearest package.json to the
+# working directory, so install it from apps/web (the sandbox runs from there too). The animation
+# sandbox has no internet, so the build must not continue without it: retry, then fail loudly.
+RUN cd apps/web && for i in 1 2 3; do \
+      node -e "require('/app/packages/render/node_modules/@remotion/renderer').ensureBrowser({ logLevel: 'error' }).then(() => process.exit(0))" && break; \
+      echo "Chrome download failed (attempt $i of 3), retrying…"; sleep 5; \
+    done && node -e "require('/app/packages/render/node_modules/@remotion/renderer').ensureBrowser({ logLevel: 'error' }).then((b) => { if (!b || b.type === 'no-browser') process.exit(1); console.log('Remotion browser:', b.path); })" \
+    || (echo "ERROR: could not download Remotion's headless Chrome; the animation sandbox needs it and has no internet. Check your connection and run docker compose up --build again." && exit 1)
 
 ENV NODE_ENV=production
 EXPOSE 3000
