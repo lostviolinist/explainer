@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LiveScene, LiveState } from "@/lib/live";
 import { ask } from "@/app/actions";
+import { PendingButton, PendingNote } from "@/app/pending";
 
 type Preview = {
   hookLine?: string;
@@ -181,7 +182,8 @@ export function Progress({ projectId, question, initial, initialLive }: { projec
         {failed && (
           <form action={ask} className="retry">
             <input type="hidden" name="question" value={question} />
-            <button className="btn primary" type="submit">Try again</button>
+            <PendingButton className="btn primary">Try again</PendingButton>
+            <PendingNote />
           </form>
         )}
       </section>

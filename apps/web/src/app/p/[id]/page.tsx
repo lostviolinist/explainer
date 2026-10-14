@@ -6,6 +6,7 @@ import { db, schema } from "@/lib/db";
 import { latest } from "@/lib/store";
 import { getLiveState } from "@/lib/live";
 import { react } from "@/app/actions";
+import { PendingButton, PendingNote } from "@/app/pending";
 import { Progress } from "./Progress";
 
 export const dynamic = "force-dynamic";
@@ -46,16 +47,17 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
       <form action={react} className="reactions">
         <input type="hidden" name="projectId" value={id} />
-        <button className="btn ghost" name="reaction" value="simpler">Simpler</button>
-        <button className="btn ghost" name="reaction" value="deeper">Deeper</button>
+        <PendingButton className="btn ghost" name="reaction" value="simpler">Simpler</PendingButton>
+        <PendingButton className="btn ghost" name="reaction" value="deeper">Deeper</PendingButton>
         <a className="btn ghost" href={`${appUrl}/s/${project.shareSlug}`}>Share</a>
         <a className="btn ghost" href={render.srtUrl} download>Captions (.srt)</a>
+        <PendingNote>Setting up a new video — the progress page opens in a moment.</PendingNote>
       </form>
       <form action={react} className="followup">
         <input type="hidden" name="projectId" value={id} />
         <input type="hidden" name="reaction" value="follow-up" />
         <input name="followUp" placeholder="wait, why does…? (ask a follow-up)" maxLength={300} required />
-        <button className="btn" type="submit">Ask</button>
+        <PendingButton className="btn">Ask</PendingButton>
       </form>
 
       {research && (

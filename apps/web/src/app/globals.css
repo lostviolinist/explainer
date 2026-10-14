@@ -175,7 +175,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none !importan
 .badge.ready { color: var(--green); }
 .badge.work { color: var(--ink); }
 .spin { width: 9px; height: 9px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.25); border-top-color: var(--pink); animation: spin .8s linear infinite; }
-.ask button .spin { display: inline-block; vertical-align: -1px; width: 12px; height: 12px; margin-right: 8px; border-color: rgba(18, 13, 31, 0.25); border-top-color: #120d1f; }
+.ask button .spin, .btn .spin { display: inline-block; vertical-align: -1px; width: 12px; height: 12px; margin-right: 8px; }
+.ask button .spin, .btn.primary .spin { border-color: rgba(18, 13, 31, 0.25); border-top-color: #120d1f; }
+.btn[aria-busy="true"] { cursor: progress; }
+.reactions .starting { flex-basis: 100%; margin-top: 4px; }
 .ask button:disabled[aria-busy="true"] { opacity: 0.85; cursor: progress; }
 .starting { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 14px; animation: appear .25s ease; }
 .starting .spin { width: 12px; height: 12px; }
