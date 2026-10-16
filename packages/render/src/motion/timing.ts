@@ -48,6 +48,22 @@ export function cueTimes(words: Word[], narration: string, durationS: number, cu
   return out;
 }
 
+/**
+ * Cue times for things that are independent of each other (callouts on a
+ * picture): each at its own cue wherever that falls, unknown ones spread
+ * evenly over the scene, none before the cut has finished.
+ */
+export function cueTimesEach(words: Word[], narration: string, durationS: number, cues: string[]): number[] {
+  const raw = cues.map((c) => cueSeconds(words, narration, durationS, c));
+  const unknown = raw.filter((t) => Number.isNaN(t)).length;
+  let k = 0;
+  return raw.map((t) => {
+    if (!Number.isNaN(t)) return Math.max(0.4, Math.min(t, Math.max(0.4, durationS - 0.3)));
+    k++;
+    return Math.max(0.4, (durationS * k) / (unknown + 1));
+  });
+}
+
 export const toFrame = (seconds: number) => Math.round(seconds * FPS);
 
 /** 0→1 over `over` seconds from `at`, eased out (cubic). */

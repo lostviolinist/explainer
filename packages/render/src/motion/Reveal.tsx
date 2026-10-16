@@ -3,7 +3,7 @@ import type { AnimSpec } from "@explainer/schemas";
 import type { ExplainerProps } from "../props.js";
 import { Drift } from "../SceneLayers.js";
 import { Cue, Pill, pillWidth, useT } from "./Pieces.js";
-import { cueTimes, ease } from "./timing.js";
+import { cueTimesEach, ease } from "./timing.js";
 import { FRAME, type Theme } from "./theme.js";
 
 type Spec = Extract<AnimSpec, { kind: "reveal" }>;
@@ -43,9 +43,11 @@ function place(px: number, py: number, text: string) {
 export function Reveal({ spec, scene, theme, sfx }: { spec: Spec; scene: Scene; theme: Theme; sfx: Record<string, string> }) {
   const t = useT();
   const still = scene.visuals.find((v) => v.role === "still" || v.role === "background");
-  const times = cueTimes(scene.words, scene.narration, scene.durationS, spec.items.map((i) => i.cue));
-  const current = times.reduce((c, at, i) => (t >= at ? i : c), -1);
-  let column = 0;
+  // Each callout lands on its own word, whatever order the parts were listed in.
+  const times = cueTimesEach(scene.words, scene.narration, scene.durationS, spec.items.map((i) => i.cue));
+  const current = times.reduce((c, at, i) => (t >= at && (c < 0 || at >= times[c]!) ? i : c), -1);
+  // Unlocated parts stack in a column in the order they appear.
+  const columnOrder = spec.items.map((item, i) => ({ i, at: times[i]! })).filter(({ i }) => spec.items[i]!.x === null || spec.items[i]!.y === null).sort((a, b) => a.at - b.at).map((x) => x.i);
   return (
     <Drift scene={scene}>
       {still && <Img src={still.asset.url} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
@@ -77,7 +79,7 @@ export function Reveal({ spec, scene, theme, sfx }: { spec: Spec; scene: Scene; 
           const color = theme.accents[i % theme.accents.length]!;
           const e = ease(t, at + 0.3, 0.4);
           const located = item.x !== null && item.y !== null;
-          const p = located ? place(item.x! * FRAME.w, item.y! * FRAME.h, item.label) : { x: 96, y: 150 + 84 * column++ };
+          const p = located ? place(item.x! * FRAME.w, item.y! * FRAME.h, item.label) : { x: 96, y: 150 + 84 * columnOrder.indexOf(i) };
           return (
             <div key={i} style={{ position: "absolute", left: p.x, top: p.y, opacity: Math.min(1, e * 1.3) * (current === i ? 1 : 0.85), transform: `scale(${0.8 + 0.2 * e})`, transformOrigin: located && item.x! * FRAME.w > p.x ? "right center" : "left center" }}>
               <Pill text={item.label} color={color} ink={theme.onAccent} size={SIZE} style={{ boxShadow: "0 6px 24px rgba(0,0,0,0.18)" }} />

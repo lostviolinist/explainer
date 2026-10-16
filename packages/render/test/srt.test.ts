@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildSrt } from "../src/renderer.ts";
 import { totalFrames, FPS } from "../src/props.ts";
-import { cueSeconds, cueTimes } from "../src/motion/timing.ts";
+import { cueSeconds, cueTimes, cueTimesEach } from "../src/motion/timing.ts";
 import { sampleProps } from "../src/sample.ts";
 
 test("SRT has one cue per sentence, offset by scene start", () => {
@@ -25,6 +25,11 @@ test("a cue word maps to its moment in the scene; phrases, stems and unknown cue
   assert.ok(times[0]! >= 0.4, "not during the cut");
   assert.ok(times[1]! > times[0]! && times[1]! < times[2]!, "unknown cue between its neighbours");
   assert.ok(times[3]! > times[2]! && times[3]! <= s.durationS - 0.3);
+  // Independent things (callouts) keep their own moments whatever order they were listed in.
+  const each = cueTimesEach(s.words, s.narration, s.durationS, ["gravity", "Its", "zebra"]);
+  assert.ok(each[1]! < each[0]!, "the part named first appears first");
+  assert.equal(each[1], 0.4, "never during the cut");
+  assert.ok(each[2]! > 0.4 && each[2]! < s.durationS, "an unknown cue lands inside the scene");
 });
 
 test("total frames includes tails and end card", () => {
