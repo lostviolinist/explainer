@@ -62,7 +62,8 @@ export function buildRenderProps(brief: Brief, plan: ScenePlan, assets: SceneAss
         id: s.id,
         narration: s.narration,
         visualType: s.visualType,
-        animSpec: s.render?.animSpec ?? { kind: "none" },
+        // The spec refined after the visuals (callouts placed on the still) wins over the plan's.
+        animSpec: a.animSpec ?? s.render?.animSpec ?? { kind: "none" },
         audioUrl: a.audio.asset.url,
         durationS: a.audio.durationS,
         words: a.audio.words,

@@ -15,9 +15,9 @@ export type Check = { name: string; status: "ok" | "warn" | "fail"; detail: stri
 
 /** Check names the home page reads to offer the 3Blue1Brown style. */
 export const MANIM_CHECK = "3Blue1Brown animator";
-export const THREE_CHECK = "Motion & 3D animator";
+export const THREE_CHECK = "3D animator";
 
-/** An animation sandbox is optional: missing or down is a warning, and the pipeline simply doesn't use it. */
+/** An animation sandbox is optional: missing or down is a warning, and the styles that need it are held. Illustrated videos need neither. */
 async function sandbox(envVar: string, without: string): Promise<string | { warn: string }> {
   const url = process.env[envVar];
   if (!url) return { warn: `not configured (${envVar}); ${without}` };
@@ -123,8 +123,8 @@ export async function runPreflight(): Promise<Check[]> {
       return "browser ready";
     }),
 
-    run(MANIM_CHECK, "Start the `manim` service: docker compose up --build.", () => sandbox("MANIM_URL", "the 3Blue1Brown style is off")),
-    run(THREE_CHECK, "Start the `three` service: docker compose up --build, then `docker compose logs three` if it keeps failing.", () => sandbox("THREE_URL", "the Illustrated style is off (its animations need this sandbox)")),
+    run(MANIM_CHECK, "Start the `manim` service: docker compose up --build, then `docker compose logs manim` if it keeps failing.", () => sandbox("MANIM_URL", "the 3Blue1Brown style is off (Illustrated videos don't need it)")),
+    run(THREE_CHECK, "Start the `three` service: docker compose up --build.", () => sandbox("THREE_URL", "no 3D scenes in the 3Blue1Brown style; nothing else uses it")),
   ]);
 }
 

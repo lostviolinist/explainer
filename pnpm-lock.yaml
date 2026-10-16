@@ -29,6 +29,9 @@ importers:
       '@explainer/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
+      '@remotion/player':
+        specifier: 4.0.534
+        version: 4.0.534(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@opentelemetry/api@1.9.1)(@prisma/client@5.22.0(prisma@5.22.0))(@types/pg@8.15.6)(@types/react@18.3.31)(postgres@3.4.9)(prisma@5.22.0)(react@18.3.1)
@@ -47,6 +50,9 @@ importers:
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
+      remotion:
+        specifier: 4.0.534
+        version: 4.0.534(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       zod:
         specifier: ^3.23.8
         version: 3.25.76

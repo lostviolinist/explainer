@@ -97,22 +97,24 @@ const TYPE_DESCRIPTIONS: Record<string, string> = {
   "reference-seq": "reference-seq (a recurring character)",
   manim: "manim (the 3Blue1Brown look: equations, graphs, geometry, arrows, step-by-step derivations; the default in this style)",
   three: "three (a 3D animated model: orbits, molecules, light paths, anything spatial that reads better in 3D)",
-  motion: "motion (flat motion graphics built on screen as it's explained, for how things work: processes, flows, cycles, cause and effect, comparisons, quantities)",
+  motion: "motion (flat motion graphics from a designed template, for how things work: steps in order or a cycle; two or three things compared; one number that matters; a myth against the fact; a few key points. The default for explaining a process, a comparison or a quantity)",
 };
 
-/** Scene types on offer: by style, and only the animation engines that are running. */
+/**
+ * Scene types on offer. The Illustrated style needs no sandbox: its motion
+ * graphics are templates. The 3Blue1Brown style needs the Manim sandbox, and
+ * offers 3D scenes when the three.js one runs too.
+ */
 export function visualTypesFor(style: Brief["style"], engines: string[]): Scene["visualType"][] {
-  const three = engines.includes("three") ? (["three"] as const) : [];
-  if (style === "math" && engines.includes("manim")) return ["manim", ...three, "chart", "text"];
-  const motion = engines.includes("motion") ? (["motion"] as const) : [];
-  return [...motion, "diagram", "chart", "text", "still-animated", "clip", "reference-seq", ...three];
+  if (style === "math" && engines.includes("manim")) return ["manim", ...(engines.includes("three") ? (["three"] as const) : []), "chart", "text"];
+  return ["motion", "diagram", "chart", "text", "still-animated", "clip", "reference-seq"];
 }
 
 /** Off-menu choices map to the closest type on offer. */
 export function fitVisualType(t: Scene["visualType"], offered: Scene["visualType"][]): Scene["visualType"] {
   if (offered.includes(t)) return t;
   if (offered.includes("manim")) return t === "chart" || t === "text" ? t : "manim";
-  if (t === "manim") return offered.includes("motion") ? "motion" : "diagram";
+  if (t === "manim" || t === "three") return "motion";
   return "still-animated";
 }
 

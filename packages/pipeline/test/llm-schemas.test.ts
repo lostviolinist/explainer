@@ -5,10 +5,10 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { Inferred } from "../src/stages/intake.ts";
 import { Queries, Extracted, Merged } from "../src/stages/research.ts";
 import { Arc, Scenes, LearnerPass, ExpertPass } from "../src/stages/script.ts";
-import { Planned, VisionScore, SceneCode, StillLayout } from "../src/stages/visuals.ts";
+import { MotionPlan, ChartPlan, PointsPlan, PicturePlan, DiagramPlan, Located, VisionScore, SceneCode } from "../src/stages/visuals.ts";
 import { Watchability, FactCheck } from "../src/stages/assemble.ts";
 
-const SCHEMAS: Record<string, z.ZodTypeAny> = { Inferred, Queries, Extracted, Merged, Arc, Scenes, LearnerPass, ExpertPass, Planned, VisionScore, Watchability, FactCheck, SceneCode, StillLayout, Ping: z.object({ ok: z.literal(true) }) };
+const SCHEMAS: Record<string, z.ZodTypeAny> = { Inferred, Queries, Extracted, Merged, Arc, Scenes, LearnerPass, ExpertPass, MotionPlan, ChartPlan, PointsPlan, PicturePlan, DiagramPlan, Located, VisionScore, Watchability, FactCheck, SceneCode, Ping: z.object({ ok: z.literal(true) }) };
 
 /** OpenAI strict structured outputs: every object closed and every property required; root is an object. */
 function strictProblems(node: any, path: string, defs: Record<string, any>, out: string[], seen = new Set<any>()) {

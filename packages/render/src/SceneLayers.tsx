@@ -1,14 +1,14 @@
-import { AbsoluteFill, Audio, Freeze, Img, OffthreadVideo, Sequence, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { FPS, PALETTE, SFX_VOLUME, accentsFor, cueFrame } from "./props.js";
+import { AbsoluteFill, Freeze, Img, OffthreadVideo, interpolate, useCurrentFrame } from "remotion";
+import { FPS } from "./props.js";
 import type { ExplainerProps } from "./props.js";
 
 type Scene = ExplainerProps["scenes"][number];
 
 /**
  * A slow camera move across the whole scene so no shot sits still: push in, with a
- * gentle pan whose direction alternates by scene.
+ * gentle pan whose direction alternates by scene. Callouts drawn inside it move with the picture.
  */
-function Drift({ scene, children }: { scene: Scene; children: React.ReactNode }) {
+export function Drift({ scene, children }: { scene: Scene; children: React.ReactNode }) {
   const frame = useCurrentFrame();
   const total = Math.max(1, scene.durationS * FPS);
   const t = interpolate(frame, [0, total], [0, 1], { extrapolateRight: "clamp" });
@@ -53,98 +53,5 @@ export function Visual({ scene }: { scene: Scene }) {
       </Drift>
     );
   }
-  return null;
-}
-
-/** A short sound at a frame of the scene (when the kit has it). */
-function Cue({ src, from }: { src?: string; from: number }) {
-  if (!src || from < 0) return null;
-  return (
-    <Sequence from={from} name="cue">
-      <Audio src={src} volume={SFX_VOLUME} />
-    </Sequence>
-  );
-}
-
-/** Programmatic layer driven by the anim spec and word timestamps; labels and bars pop with a sound. */
-export function Programmatic({ scene, background, sfx = {} }: { scene: Scene; background: ExplainerProps["background"]; sfx?: Record<string, string> }) {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const pal = PALETTE[background];
-  const accents = accentsFor(background);
-  const spec = scene.animSpec;
-
-  if (spec.kind === "labelled-diagram") {
-    return (
-      <AbsoluteFill style={{ padding: 96, fontFamily: "Inter, system-ui, sans-serif" }}>
-        {spec.labels.map((l, i) => (
-          <Cue key={`c${i}`} src={sfx.pop} from={cueFrame(scene.words, l.cueWord)} />
-        ))}
-        {spec.labels.map((l, i) => {
-          const at = cueFrame(scene.words, l.cueWord);
-          const s = spring({ frame: frame - at, fps, config: { damping: 200 } });
-          if (frame < at) return null;
-          return (
-            <div
-              key={i}
-              style={{
-                position: "absolute",
-                left: 96,
-                top: 140 + i * 84,
-                padding: "10px 22px",
-                borderRadius: 12,
-                background: accents[i % accents.length],
-                color: "#1B2235",
-                fontSize: 34,
-                fontWeight: 500,
-                opacity: s,
-                transform: `translateX(${(1 - s) * -24}px)`,
-              }}
-            >
-              {l.text}
-            </div>
-          );
-        })}
-      </AbsoluteFill>
-    );
-  }
-
-  if (spec.kind === "kinetic-text") {
-    return (
-      <AbsoluteFill style={{ justifyContent: "center", padding: "0 160px", fontFamily: "Inter, system-ui, sans-serif" }}>
-        {spec.lines.map((l, i) => (
-          <Cue key={`c${i}`} src={sfx.pop} from={cueFrame(scene.words, l.cueWord)} />
-        ))}
-        {spec.lines.map((l, i) => {
-          const at = cueFrame(scene.words, l.cueWord);
-          const s = spring({ frame: frame - at, fps, config: { damping: 200 } });
-          if (frame < at) return null;
-          return (
-            <div key={i} style={{ fontSize: 72, fontWeight: 600, color: pal.ink, lineHeight: 1.15, marginBottom: 24, opacity: s, transform: `translateY(${(1 - s) * 20}px)` }}>
-              {l.text}
-            </div>
-          );
-        })}
-      </AbsoluteFill>
-    );
-  }
-
-  if (spec.kind === "chart") {
-    const max = Math.max(...spec.series.map((x) => x.value), 1);
-    const grow = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 45 });
-    return (
-      <AbsoluteFill style={{ padding: "160px 200px 300px", display: "flex", flexDirection: "row", alignItems: "flex-end", gap: 48, fontFamily: "Inter, system-ui, sans-serif" }}>
-        <Cue src={sfx.whoosh} from={2} />
-        {spec.series.map((x, i) => (
-          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-            <div style={{ color: pal.ink, fontSize: 40, fontWeight: 600 }}>{x.value}</div>
-            <div style={{ width: "100%", height: (x.value / max) * 520 * grow, background: accents[i % accents.length], borderRadius: 12 }} />
-            <div style={{ color: pal.muted, fontSize: 30 }}>{x.label}</div>
-          </div>
-        ))}
-      </AbsoluteFill>
-    );
-  }
-
   return null;
 }

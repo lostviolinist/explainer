@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildSrt } from "../src/renderer.ts";
-import { cueFrame, totalFrames, FPS } from "../src/props.ts";
+import { totalFrames, FPS } from "../src/props.ts";
+import { cueSeconds, cueTimes } from "../src/motion/timing.ts";
 import { sampleProps } from "../src/sample.ts";
 
 test("SRT has one cue per sentence, offset by scene start", () => {
@@ -12,10 +13,18 @@ test("SRT has one cue per sentence, offset by scene start", () => {
   assert.match(cues[2]!, /00:00:04,8\d\d --> /); // scene 2 starts at 4.2 + 0.6 tail
 });
 
-test("cue word maps to a frame inside the scene", () => {
+test("a cue word maps to its moment in the scene; phrases, stems and unknown cues too", () => {
   const s = sampleProps.scenes[1]!;
-  const f = cueFrame(s.words, "gravity");
-  assert.ok(f > 0 && f < s.durationS * FPS);
+  const at = cueSeconds(s.words, s.narration, s.durationS, "gravity");
+  assert.ok(at > 0 && at < s.durationS);
+  assert.equal(cueSeconds(s.words, s.narration, s.durationS, "black hole's"), s.words.find((w) => w.w === "black")!.start, "a phrase matches its first word");
+  assert.equal(cueSeconds(s.words, s.narration, s.durationS, "lines"), s.words.find((w) => w.w === "line,")!.start, "plurals and stems match");
+  assert.ok(Number.isNaN(cueSeconds(s.words, s.narration, s.durationS, "zebra")), "a cue that is nowhere is NaN");
+  // In order, never before the one before, never in the cut; unknown cues spread out between their neighbours.
+  const times = cueTimes(s.words, s.narration, s.durationS, ["Its", "zebra", "gravity", "zebra"]);
+  assert.ok(times[0]! >= 0.4, "not during the cut");
+  assert.ok(times[1]! > times[0]! && times[1]! < times[2]!, "unknown cue between its neighbours");
+  assert.ok(times[3]! > times[2]! && times[3]! <= s.durationS - 0.3);
 });
 
 test("total frames includes tails and end card", () => {

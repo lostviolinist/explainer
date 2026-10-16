@@ -101,10 +101,3 @@ export function sceneFrames(durationS: number) {
 export function totalFrames(p: ExplainerProps) {
   return p.scenes.reduce((n, s) => n + sceneFrames(s.durationS), 0) + END_CARD_S * FPS;
 }
-
-/** Frame (within the scene) at which a cue word starts. */
-export function cueFrame(words: ExplainerProps["scenes"][number]["words"], cue: string): number {
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const w = words.find((x) => norm(x.w) === norm(cue)) ?? words.find((x) => norm(x.w).startsWith(norm(cue)));
-  return w ? Math.round(w.start * FPS) : 0;
-}

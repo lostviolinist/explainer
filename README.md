@@ -21,7 +21,7 @@ Good to know:
 - **Which version is running** is written at the bottom of the home page (`build 83547ba (main) · date`). After `git pull`, run `docker compose up --build` again and that line should change.
 - **To update:** `git pull`, then `docker compose up --build`. To stop everything: `docker compose down`.
 - **Something failed?** http://localhost:8288 shows every step of every run with its logs and errors.
-- **A video came out as still pictures with labels stacked in a corner?** The animation sandbox wasn't running when it was made. The app now refuses to start an Illustrated video in that state (the style shows "unavailable"); `/?setup` says why, and `docker compose logs three` has the details.
+- **The 3Blue1Brown style shows "not available"?** Its Manim sandbox isn't running: `docker compose logs manim`. Illustrated videos don't need any sandbox.
 
 Keys and credits are the only things that can stop a run. The app checks them quietly before it starts one.
 
@@ -64,26 +64,25 @@ If either fails, the script is rewritten. If it fails twice, the arc is simplifi
 
 Each scene is one idea with one picture. The script says what's seen in the way a director would — naming the metaphor and what moves, in what order, on which words — and picks a type of picture for it:
 
-- **Motion graphics** for how things work: processes, flows, cycles, cause and effect, comparisons, quantities. Built on screen as the narration explains it: shapes draw themselves on, things travel and transform, the thing being talked about is the thing that moves.
-- **An illustration** for what something looks like — anatomy, a machine, a place — generated in the house style, with animated callouts that point at each part as it's mentioned.
+- **Motion graphics** for how things work. These are not drawn freehand by a model: they are a handful of templates a person designed once, in the house style, and the model only fills them in. Steps in order (or a cycle), two or three things compared, one number that matters, a myth against the fact, a few key points. Each thing on screen lands on the word that names it.
+- **An illustration** for what something looks like — anatomy, a machine, a place — generated in the house style. Its parts are then found in the picture by looking at it, and a label points at each one as it's mentioned.
 - **A short generated clip** for establishing shots and demonstrations.
-- **A 3D scene** when something is spatial: orbits, molecules, light paths.
-- **A chart** when the point is a number, and **a title card** for a recap.
+- **A chart** when the point is a number, and **key points** for a recap.
 
-The rule that matters most, learned from watching bad output: **one idea per scene, drawn as things rather than as diagrams of things.** A word is a word card, light is a moving dot, heat is a glow. Boxes-and-arrows only when the narration is literally about boxes and arrows. Before any scene is animated, the director has to say in eight words what a first-time viewer sees in the first second; if that can't be said, the scene is too complicated and gets simplified. A scene with more than fourteen things in it is refused outright.
+The rule that matters most, learned from watching bad output: **a model is good at deciding what to say and bad at drawing it.** Earlier versions asked the model to write the animation code itself, and the results were abstract shapes standing in for ideas: a blob labelled "river", boxes with arrows for "language". So the drawing is fixed and the model's job is reduced to words, icons, numbers and timing, which it does well. The templates can't produce clutter, text that spills out of its box, or a diagram where a picture was wanted, because none of those is a choice they offer.
 
 The same things look the same in every scene. Early on, the script names the three to six recurring "cast members" of the video — the subject, its key parts, the viewer's stand-in — with a fixed look and colour each, and every scene draws them that way.
 
 ### Two styles
 
-- **Illustrated**: the flat house style — a limited palette, simple shapes, no outlines, generous space — animated. Pictures come from Hedra; motion graphics, callouts and 3D scenes are written as code and rendered in a sandbox.
-- **3Blue1Brown**: scenes written as [Manim](https://www.manim.community/) code — equations, graphs, geometry, built up step by step on black. No generated pictures at all, so it costs a fraction of an illustrated video.
+- **Illustrated**: the flat house style — a limited palette, simple shapes, no outlines, generous space — animated. Pictures come from Hedra; the motion comes from the templates above. Nothing a model wrote ever runs.
+- **3Blue1Brown**: scenes written as [Manim](https://www.manim.community/) code — equations, graphs, geometry, built up step by step on black — and rendered in a sandbox with no keys and no internet, because here the model does write the code (it has seen a great deal of Manim). No generated pictures at all, so it costs a fraction of an illustrated video.
 
 ### Building the video
 
 Narration is recorded first, because everything else is timed to it. The voice gets a few delivery marks per scene (curious, a dramatic pause) chosen by the model and checked word for word against the script; if a single word differs, the plain script is read instead. The recording is then transcribed to get the exact time of every word, so captions highlight the word being spoken and animations cue to it.
 
-Every picture is **checked by looking at it**. Still images are judged for whether they show what was asked and whether they match the house style. Animations are judged on frames at known moments against the plan: does each frame show what should be on screen then, is something visibly different between frames, would a first-time viewer understand it at a glance. A failure goes back to the model with the reviewer's notes, up to three times. After that the scene steps down to something safer — a simpler animation, a plain illustration — and a scene is never left blank.
+Every generated picture is **checked by looking at it**. Still images and clips are judged for whether they show what was asked and whether they match the house style; a failure is retried on the next model, then the scene steps down to something safer, and a scene is never left blank. Template scenes need no check: the schema refuses a template that is filled in wrong (a step too many, an icon that doesn't exist), and the drawing itself can't go wrong. In the 3Blue1Brown style, where the model writes Manim code, frames of each render are judged against the plan and failures go back to the model with the reviewer's notes, up to three times.
 
 Then the cut: a flat colour swipe between scenes, a sound kit (pops, whooshes, a chime on the end card), and a music bed under the narration. The music is composed once per tone and played **end-aligned** — it starts partway in so its composed ending lands exactly on the end card, so it never cuts off mid-phrase. The video closes on the learning goal and the list of sources that were actually opened.
 
@@ -95,7 +94,7 @@ Ten minutes is a long time to stare at a progress bar, so the progress page is b
 - **Did you know?** — the strongest claims from the research, deduplicated so the same fact doesn't appear twice in different words.
 - **Myth or fact?** — a quiz built from the misconceptions the research found (the myths) and the best-corroborated facts, interleaved so the answer isn't always "myth", with the correcting claim shown after each answer and a running score.
 - **The storyboard**: every scene's picture and narration as it's made, with a play button for the voice.
-- **The rough cut**, once scenes are finished: they play back to back with narration and captions while the final video (music, transitions, sound) still renders.
+- **The rough cut**, once scenes are finished: the real composition plays in the browser — narration, captions, motion, transitions — while the final video (with its music) still renders.
 
 By the time the video is ready, a curious viewer has already learned most of it.
 
@@ -112,11 +111,14 @@ The decisions above are data and short rule texts, not spread through the code:
 | Which sites count as reputable | `packages/pipeline/src/providers/search.ts` → `domainReputation` |
 | How level, tone and background are inferred | `packages/pipeline/src/stages/intake.ts` |
 | The seven beats, the writing rules, the length cap | `packages/pipeline/src/stages/script.ts`; `MAX_VIDEO_SECONDS` in `.env` |
-| What each scene type is for, and the clarity rules for animations | `packages/pipeline/src/stages/engines.ts` |
+| What each scene type is for | `packages/pipeline/src/stages/script.ts` → `TYPE_DESCRIPTIONS` |
+| What the model is told when it fills a template | `packages/pipeline/src/stages/templates.ts` |
+| The templates themselves (how steps, comparisons, counts, splits, points, charts and callouts move) | `packages/render/src/motion/` (`pnpm --filter @explainer/render templates out/` renders a frame of each) |
+| The rules for model-written Manim and 3D code (3Blue1Brown style) | `packages/pipeline/src/stages/engines.ts` |
 | The house style: palette, voice, which models for which picture | `config/house-style.json` |
 | Music levels, cut length, sound volume | `packages/render/src/props.ts` |
 | Music and sound prompts | `packages/pipeline/src/stages/library.ts` |
 
-It's a TypeScript monorepo: a Next.js app (`apps/web`), the pipeline stages (`packages/pipeline`), the Hedra client (`packages/hedra`), the video composition (`packages/render`), and two sandboxes that run model-written animation code with no keys and no internet (`animator/manim` and `packages/render/src/animator`). `pnpm -r test` runs the tests; `pnpm --filter @explainer/web smoke` runs the whole pipeline end to end against fake APIs and renders a real video (`docker compose exec web pnpm --filter @explainer/web smoke` inside the stack).
+It's a TypeScript monorepo: a Next.js app (`apps/web`), the pipeline stages (`packages/pipeline`), the Hedra client (`packages/hedra`), the video composition and its motion templates (`packages/render`), and two sandboxes for the 3Blue1Brown style that run model-written animation code with no keys and no internet (`animator/manim` for Manim, `packages/render/src/animator` for three.js). `pnpm -r test` runs the tests; `pnpm --filter @explainer/web smoke` runs the whole pipeline end to end against fake APIs and renders a real video (`docker compose exec web pnpm --filter @explainer/web smoke` inside the stack).
 
 Speed: the longest step is the final render, which is bound by how fast Chrome can paint 1080p frames — give Docker Desktop more cores (Settings → Resources) before anything else; `RENDER_SCALE=0.6667` in `.env` renders 720p about twice as fast. Hosting notes, every setting and its default: `.env.example`.

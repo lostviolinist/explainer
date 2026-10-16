@@ -85,8 +85,8 @@ export function ctxFromEnv(store: ArtifactStore, frames: FrameSampler): Ctx {
     // transcription (same key), else estimated from the text.
     aligner: new FallbackAligner(env.ALIGNMENT_URL ? new HttpAligner(env.ALIGNMENT_URL) : new OpenAIAligner(need("OPENAI_API_KEY")), (why) => console.warn(`[align] estimated word timing: ${why}`)),
     frames,
-    // The Remotion sandbox (THREE_URL) renders both 3D and flat motion graphics.
-    animator: new HttpAnimator({ manim: env.MANIM_URL || undefined, three: env.THREE_URL || undefined, motion: env.THREE_URL || undefined }),
+    // Sandboxes for model-written code: Manim, and three.js for 3D scenes (3Blue1Brown style). Flat scenes need neither.
+    animator: new HttpAnimator({ manim: env.MANIM_URL || undefined, three: env.THREE_URL || undefined }),
     store,
     style: loadHouseStyle(),
     now: () => new Date().toISOString(),

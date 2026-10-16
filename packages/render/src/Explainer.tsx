@@ -1,7 +1,8 @@
 import { AbsoluteFill, Audio, Sequence, interpolate, useCurrentFrame } from "remotion";
 import { ExplainerProps, FPS, PALETTE, END_CARD_S, MUSIC, SFX_VOLUME, SWIPE_FRAMES, accentsFor, musicStart, musicVolume, sceneFrames, speechWindows, totalFrames } from "./props.js";
 import { Captions } from "./Captions.js";
-import { Programmatic, Visual } from "./SceneLayers.js";
+import { Visual } from "./SceneLayers.js";
+import { Motion, drawsOwnPicture } from "./motion/Motion.js";
 
 function Fade({ children, durationInFrames, inFrames = 12, outFrames = 12 }: { children: React.ReactNode; durationInFrames: number; inFrames?: number; outFrames?: number }) {
   const frame = useCurrentFrame();
@@ -85,11 +86,13 @@ export function Explainer(props: ExplainerProps) {
         const frames = sceneFrames(s.durationS);
         const from = cursor;
         cursor += frames;
+        // Code renders (Manim, three.js) carry their own labels; everything else gets the motion layer,
+        // which for callouts over a still draws the picture itself so the two move together.
+        const coded = s.visuals.some((v) => v.role === "animation");
         const inner = (
           <>
-            <Visual scene={s} />
-            {/* Animated scenes draw their own labels and callouts. */}
-            {!s.visuals.some((v) => v.role === "animation") && <Programmatic scene={s} background={props.background} sfx={sfx} />}
+            {!drawsOwnPicture(s) && <Visual scene={s} />}
+            {!coded && <Motion scene={s} background={props.background} sfx={sfx} />}
             <Captions words={s.words} narration={s.narration} background={props.background} />
           </>
         );
@@ -102,7 +105,7 @@ export function Explainer(props: ExplainerProps) {
             ) : (
               <Fade durationInFrames={frames}>{inner}</Fade>
             )}
-            <Audio src={s.audioUrl} />
+            {s.audioUrl && <Audio src={s.audioUrl} />}
             {(s.sounds ?? []).map((c, k) => (
               <Sfx key={k} src={sfx[c.kind]} from={Math.round(c.at * FPS)} />
             ))}

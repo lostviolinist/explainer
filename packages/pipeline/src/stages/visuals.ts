@@ -7,24 +7,32 @@
  *                    programmatic assets) → vision check → retry on next model
  *                    → demote to a safer visual type.
  *
- * Code scenes (manim / three): the model writes Manim or React Three Fiber code,
- * the animator sandbox renders it, sampled frames are checked, and failures
- * (render errors or reviewer notes) are fed back for up to three attempts.
+ * Illustrated motion graphics (motion / chart / text / the callouts of a diagram)
+ * are hand-designed templates filled in by the model at plan time and drawn by
+ * the composition: no model-written code, no sandbox, nothing to review.
+ *
+ * Code scenes (manim / three, the 3Blue1Brown style): the model writes Manim or
+ * React Three Fiber code, the animator sandbox renders it, sampled frames are
+ * checked, and failures (render errors or reviewer notes) are fed back for up
+ * to three attempts.
  *
  * All generated assets are mirrored; both the Hedra asset id and our URL are kept.
  */
 import { z } from "zod";
-import { AnimSpec, RenderSpec, SceneAssets, QaResult, SoundCue, VIDEO_TIMING, type Scene, type ScenePlan, type Brief, type MirroredAsset, type CastMember } from "@explainer/schemas";
+import { AnimSpec, ChartSpec, MotionSpec, PointsSpec, RenderSpec, SceneAssets, QaResult, SoundCue, VIDEO_TIMING, type Scene, type ScenePlan, type Brief, type MirroredAsset, type CastMember } from "@explainer/schemas";
 import { generateStill, animateStill, generateClip, generateSpeech, HedraError, type GenOutcome } from "@explainer/hedra";
 import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
-import type { Engine, OverlayImage } from "../providers/animator.js";
-import { MANIM_RULES, SHOT_LIST_RULES, threeRules, motionRules, narrationTimeline, stripFences, fallbackManim, type StillPart } from "./engines.js";
+import type { Engine } from "../providers/animator.js";
+import { MANIM_RULES, threeRules, narrationTimeline, stripFences, fallbackManim } from "./engines.js";
+import { CHART_PLAN_RULES, DIAGRAM_CALLOUT_RULES, MOTION_PLAN_RULES, POINTS_PLAN_RULES, pictureRules } from "./templates.js";
 
-export const Planned = z.object({
-  hedraPrompt: z.string().nullable(),
-  animSpec: AnimSpec,
-});
+/** What the planner returns, by scene type: a template filled in, a picture prompt, or both. */
+export const MotionPlan = z.object({ animSpec: MotionSpec });
+export const ChartPlan = z.object({ animSpec: ChartSpec });
+export const PointsPlan = z.object({ animSpec: PointsSpec });
+export const PicturePlan = z.object({ hedraPrompt: z.string() });
+export const DiagramPlan = z.object({ hedraPrompt: z.string(), callouts: z.array(z.object({ label: z.string().min(1).max(28), cue: z.string().min(1).max(40) })).min(1).max(6) });
 
 export const VisionScore = z.object({
   matchesDirection: z.number().min(0).max(1),
@@ -48,13 +56,6 @@ const DEMOTE: Partial<Record<Scene["visualType"], Scene["visualType"]>> = {
 /** What the model returns for a code scene: the code, and the sound effects it wants, cued in seconds. */
 export const SceneCode = z.object({ code: z.string(), sounds: z.array(SoundCue) });
 
-/** The shots of a motion scene, planned before the code is written, and the one reading it must have. */
-export const ShotList = z.object({
-  subject: z.string(),
-  glance: z.string(),
-  shots: z.array(z.object({ at: z.number(), action: z.string() })),
-});
-
 /** Sound cues in order, inside the scene, at most eight and not on top of each other. */
 export function tidySounds(sounds: SoundCue[], durationS: number): SoundCue[] {
   const out: SoundCue[] = [];
@@ -67,19 +68,26 @@ export function tidySounds(sounds: SoundCue[], durationS: number): SoundCue[] {
   return out;
 }
 
-/** Where the frame sampler takes its frames (mirrors packages/render sampleTimes), so a reviewer knows the times. */
-const sampleTimes = (durationS: number, count: number) => {
-  const inset = Math.min(0.5, durationS / 10);
-  const span = durationS - 2 * inset;
-  return count === 1 ? [inset + span / 2] : Array.from({ length: count }, (_, i) => inset + (span * i) / (count - 1));
-};
+const isCodeScene = (t: Scene["visualType"]): t is Engine => t === "manim" || t === "three";
 
-const isCodeScene = (t: Scene["visualType"]): t is Engine => t === "manim" || t === "three" || t === "motion";
-
-/** Where the parts of a still are, so an overlay can point at them (0–1, origin top-left). */
-export const StillLayout = z.object({
-  parts: z.array(z.object({ name: z.string(), x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() })),
+/** Where the parts of a still are, so callouts can point at them (0–1 in the image, origin top-left). */
+export const Located = z.object({
+  parts: z.array(z.object({ label: z.string(), x: z.number().min(0).max(1).nullable(), y: z.number().min(0).max(1).nullable() })),
 });
+
+/**
+ * A point in an image (0–1), as it lands in the 1920×1080 frame once the image
+ * is cover-fitted (scaled to fill, centred, the overflow cropped). Identity
+ * when the image's size is unknown.
+ */
+export function coverPoint(x: number, y: number, width: number | null, height: number | null): { x: number; y: number } {
+  if (!width || !height) return { x, y };
+  const scale = Math.max(1920 / width, 1080 / height);
+  const dw = width * scale, dh = height * scale;
+  const px = (1920 - dw) / 2 + x * dw, py = (1080 - dh) / 2 + y * dh;
+  const clamp = (v: number) => Math.min(0.98, Math.max(0.02, v));
+  return { x: +clamp(px / 1920).toFixed(4), y: +clamp(py / 1080).toFixed(4) };
+}
 
 /** "name: look (colour)" lines for prompts, so the same thing looks the same in every scene. */
 const castLines = (cast: CastMember[]) => cast.map((c) => `- ${c.name}: ${c.look} (${c.color})`).join("\n");
@@ -89,31 +97,42 @@ export async function planScene(ctx: Ctx, brief: Brief, scene: Scene, cast: Cast
   if (isCodeScene(scene.visualType)) {
     return RenderSpec.parse({ hedraPrompt: null, model: scene.visualType, referenceAssetIds: [], storyboardAssetId: null, animSpec: { kind: "none" } });
   }
-  const refs = [ctx.style.referenceFrames[brief.background].assetId];
-  const planned = await ctx.llm.json({
-    system: `You write generation prompts for an explainer in a fixed house style and the matching programmatic animation spec.
-House style: ${ctx.style.styleText}
-Background: ${brief.background} (${ctx.style.backgrounds[brief.background].hex}).
-Rules for hedraPrompt (null for visualType chart/text, since those are fully programmatic):
-- Start with "Flat vector illustration, detailed." Then the scene's metaphor and its supporting details from the visual direction. End with "No text, no labels. Leave the bottom-right quarter clear."
-- Describe one action for a clip; still-animated prompts describe the still only.
-- Never ask for legible text; labels are composited.
-- Real things in a real scene, never a diagram: no flowcharts, empty boxes, nodes, arrows or mind maps. If the direction is abstract (a model, a process, data), draw the concrete metaphor it names.
-- Recurring things (below) are described the same way in every prompt, so they're recognisable from scene to scene.
-animSpec: labelled-diagram (labels with the exact onScreenTerms and the narration word each appears on), chart (series from the cited claim; claimId), kinetic-text (lines with cue words), path-reveal (ids with cue words) or none.`,
-    user: `Scene ${scene.id} (${scene.beat}, ${scene.visualType}): ${scene.visualDirection}\nNarration: ${scene.narration}\nOn-screen terms: ${scene.onScreenTerms.join(", ")}${cast.length ? `\nRecurring things:\n${castLines(cast)}` : ""}`,
-    schema: Planned,
-    maxTokens: 1200,
-    effort: "low",
-  });
-  const modelKey = scene.visualType === "clip" ? "generatedClip" : scene.visualType === "reference-seq" ? "referenceSequence" : scene.visualType === "still-animated" ? "animatedStill" : "still";
-  return RenderSpec.parse({
-    hedraPrompt: planned.hedraPrompt,
-    model: ctx.style.models[modelKey]?.[0] ?? null,
-    referenceAssetIds: refs,
-    storyboardAssetId: null,
-    animSpec: planned.animSpec,
-  });
+  const spec = (hedraPrompt: string | null, animSpec: AnimSpec, modelKey?: keyof Ctx["style"]["models"]): RenderSpec =>
+    RenderSpec.parse({ hedraPrompt, model: modelKey ? (ctx.style.models[modelKey]?.[0] ?? null) : null, referenceAssetIds: hedraPrompt ? [ctx.style.referenceFrames[brief.background].assetId] : [], storyboardAssetId: null, animSpec });
+  const about = [
+    `Scene ${scene.id} (${scene.beat}): ${scene.purpose}`,
+    `What is seen: ${scene.visualDirection}`,
+    `Narration: ${scene.narration}`,
+    scene.onScreenTerms.length ? `On-screen terms: ${scene.onScreenTerms.join(", ")}` : "",
+    scene.claimIds.length ? `Claim ids: ${scene.claimIds.join(", ")}` : "",
+  ].filter(Boolean).join("\n");
+  const withCast = cast.length ? `${about}\nRecurring things:\n${castLines(cast)}` : about;
+  const picture = pictureRules(ctx.style.styleText, ctx.style.backgrounds[brief.background].hex);
+
+  switch (scene.visualType) {
+    case "motion": {
+      const { animSpec } = await ctx.llm.json({ system: MOTION_PLAN_RULES, user: about, schema: MotionPlan, maxTokens: 1500, effort: "low" });
+      return spec(null, animSpec);
+    }
+    case "chart": {
+      const { animSpec } = await ctx.llm.json({ system: CHART_PLAN_RULES, user: about, schema: ChartPlan, maxTokens: 900, effort: "low" });
+      return spec(null, { ...animSpec, claimId: scene.claimIds.includes(animSpec.claimId) ? animSpec.claimId : (scene.claimIds[0] ?? animSpec.claimId) });
+    }
+    case "text": {
+      const { animSpec } = await ctx.llm.json({ system: POINTS_PLAN_RULES, user: about, schema: PointsPlan, maxTokens: 900, effort: "low" });
+      return spec(null, animSpec);
+    }
+    case "diagram": {
+      // The picture, and which of its parts get pointed at; where they are is found once it is drawn.
+      const { hedraPrompt, callouts } = await ctx.llm.json({ system: `${picture}\n${DIAGRAM_CALLOUT_RULES}`, user: withCast, schema: DiagramPlan, maxTokens: 1200, effort: "low" });
+      return spec(hedraPrompt, { kind: "reveal", items: callouts.map((c) => ({ label: c.label, cue: c.cue, x: null, y: null })) }, "still");
+    }
+    default: {
+      const { hedraPrompt } = await ctx.llm.json({ system: picture, user: withCast, schema: PicturePlan, maxTokens: 800, effort: "low" });
+      const modelKey = scene.visualType === "clip" ? "generatedClip" : scene.visualType === "reference-seq" ? "referenceSequence" : scene.visualType === "still-animated" ? "animatedStill" : "still";
+      return spec(hedraPrompt, { kind: "none" }, modelKey);
+    }
+  }
 }
 
 async function mirrorOutcome(ctx: Ctx, projectId: string, out: GenOutcome): Promise<MirroredAsset> {
@@ -211,26 +230,29 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
   const scope = (k: string) => `${brief.projectId}:${scene.id}:${k}`;
 
   const cast = plan.cast ?? [];
-  let sounds: SoundCue[] = [];
+  let animSpec: AnimSpec | null = null;
+  // Code scenes belong to the 3Blue1Brown style; an Illustrated plan never asks for one (the menu has none).
+  if (isCodeScene(scene.visualType) && brief.style !== "math") {
+    qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 0, fallback: `demoted ${scene.visualType} → still-animated`, notes: "code scenes are not drawn in the Illustrated style" });
+    scene = { ...scene, visualType: "still-animated" };
+  }
   if (isCodeScene(scene.visualType)) {
     let animation = await renderCodeScene(ctx, brief, scene, audio, qa, cast);
-    // A 3D scene that never worked: Manim in the math style (no Hedra visuals there), an illustration otherwise.
-    if (!animation && scene.visualType === "three" && brief.style === "math") {
+    // A 3D scene that never worked becomes a Manim scene.
+    if (!animation && scene.visualType === "three") {
       qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 3, fallback: "demoted three → manim", notes: null });
       scene = { ...scene, visualType: "manim" };
       animation = await renderCodeScene(ctx, brief, scene, audio, qa, cast);
     }
     if (animation) return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals: [{ asset: animation.asset, role: "animation" }], sounds: animation.sounds, qa });
-    if (brief.style === "math") return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, qa });
-    // Illustrated: a 3D scene becomes an animated illustration; flat motion graphics become an illustrated diagram.
-    const next = scene.visualType === "motion" ? "diagram" : "still-animated";
-    qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 3, fallback: `demoted ${scene.visualType} → ${next}`, notes: null });
-    scene = { ...scene, visualType: next, render: scene.render ? { ...scene.render, hedraPrompt: null, referenceAssetIds: [] } : null };
+    return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, qa });
   }
 
-  // Fully programmatic scenes need no Hedra visuals beyond an optional background.
-  if (scene.visualType === "chart" || scene.visualType === "text") {
-    qa.push({ check: "visual-matches-direction", passed: true, score: null, attempts: 0, fallback: null, notes: "programmatic" });
+  // Template scenes are drawn by the composition from the plan's spec: nothing to generate, nothing to check.
+  if (scene.visualType === "motion" || scene.visualType === "chart" || scene.visualType === "text") {
+    const kind = scene.render?.animSpec.kind ?? "none";
+    qa.push({ check: "visual-matches-direction", passed: kind !== "none", score: null, attempts: 0, fallback: kind === "none" ? "no template planned; the scene shows its captions only" : null, notes: `template: ${kind}` });
+    await progress(`built scene ${scene.id.slice(1)} (${kind})`, 0.9, { sceneId: scene.id });
     return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, qa });
   }
 
@@ -280,15 +302,9 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
     visuals.push({ asset: still, role: scene.visualType === "diagram" ? "background" : "still" });
     await progress(`drew scene ${scene.id.slice(1)}`, 0.4, { sceneId: scene.id, stillUrl: still.url });
 
-    // 2. Motion, if the type calls for it. Diagrams: animated callouts over the still, when the motion engine runs.
+    // 2. Motion, if the type calls for it. Diagrams: the callouts are located on the still, then pointed at as they're mentioned.
     if (scene.visualType === "diagram") {
-      if ((await ctx.animator.available()).includes("motion")) {
-        const animated = await overlayCallouts(ctx, brief, scene, audio, still, qa, cast);
-        if (animated) {
-          visuals.push({ asset: animated.asset, role: "animation" });
-          sounds = animated.sounds;
-        }
-      }
+      animSpec = await locateCallouts(ctx, scene, still, qa);
       break;
     }
 
@@ -338,7 +354,37 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
     scene = { ...scene, visualType: next };
   }
 
-  return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, sounds, qa });
+  return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, animSpec, qa });
+}
+
+/**
+ * Where the diagram's callouts go: the vision model finds each named part in
+ * the still; parts it can't find stack in a column instead. The positions are
+ * mapped to the frame the still is cover-fitted into.
+ */
+async function locateCallouts(ctx: Ctx, scene: Scene, still: MirroredAsset, qa: QaResult[]): Promise<AnimSpec | null> {
+  const spec = scene.render?.animSpec;
+  if (!spec || spec.kind !== "reveal") return null;
+  try {
+    const found = await ctx.llm.vision({
+      system: "Locate the named parts in this illustration. For each label, give the point where a marker should sit on that part (x, y from 0 to 1, origin top-left, inside the part, not on its edge), or null for x and y when the part is not visible in the picture.",
+      user: `Parts: ${spec.items.map((i) => i.label).join("; ")}\nThe picture shows: ${scene.visualDirection}`,
+      imageUrls: [still.url],
+      schema: Located,
+    });
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const items = spec.items.map((item) => {
+      const hit = found.parts.find((p) => norm(p.label) === norm(item.label)) ?? found.parts.find((p) => norm(p.label).includes(norm(item.label)) || norm(item.label).includes(norm(p.label)));
+      if (!hit || hit.x === null || hit.y === null) return { ...item, x: null, y: null };
+      return { ...item, ...coverPoint(hit.x, hit.y, still.width, still.height) };
+    });
+    const placed = items.filter((i) => i.x !== null).length;
+    qa.push({ check: "visual-matches-direction", passed: placed > 0, score: placed / items.length, attempts: 1, fallback: placed ? null : "callouts listed beside the picture", notes: `${placed} of ${items.length} callouts located` });
+    return { kind: "reveal", items };
+  } catch (e) {
+    qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 1, fallback: "callouts listed beside the picture", notes: `locating parts failed: ${(e as Error).message.slice(0, 200)}` });
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -352,63 +398,31 @@ function codeBackground(brief: Brief): string {
 const ENGINE_LOOK: Record<Engine, string> = {
   manim: "Manim, in the 3Blue1Brown style",
   three: "three.js (3D)",
-  motion: "flat 2D motion graphics in a flat-illustration house style",
 };
 
-async function scoreCode(ctx: Ctx, scene: Scene, engine: Engine, frames: string[], overlay = false, motion?: { times: number[]; shots: string }) {
-  const look = overlay ? "animated callouts (rings, arrows, labels, spotlight) drawn over an illustration; check they point at the right parts" : ENGINE_LOOK[engine];
-  // Motion scenes are judged on motion: frames at known times against the shot list, and change between frames.
-  const timing = motion
-    ? ` The ${frames.length} frames are in time order, at t = ${motion.times.map((x) => x.toFixed(1)).join(", ")} s. Judge the MOTION: does each frame show what the shot list says is on screen at that moment, and is something visibly different between consecutive frames (nothing static for long)? Count a frame that still shows an earlier shot, or an empty frame, against matchesDirection.`
-    : "";
+async function scoreCode(ctx: Ctx, scene: Scene, engine: Engine, frames: string[]) {
   return ctx.llm.vision({
-    system: `Score frames from an animated explainer scene: ${look}.${timing} matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no text spilling out of its pill or box, no overlapping text or objects, good contrast, the bottom-right corner clear for captions? clarity: would a first-time viewer understand what it shows at a glance? One subject and a few supporting things score high; a frame crowded with boxes, arrows, bars and labels, or an abstract diagram standing in for the real thing, scores low even if it is "correct". hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix, and what to remove.`,
-    user: `Direction: ${scene.visualDirection}\nNarration: ${scene.narration}${motion?.shots ?? ""}`,
+    system: `Score frames from an animated explainer scene: ${ENGINE_LOOK[engine]}. matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no text spilling out of its box, no overlapping text or objects, good contrast, the bottom-right corner clear for captions? clarity: would a first-time viewer understand what it shows at a glance? One subject and a few supporting things score high; a frame crowded with boxes, arrows and labels scores low even if it is "correct". hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix, and what to remove.`,
+    user: `Direction: ${scene.visualDirection}\nNarration: ${scene.narration}`,
     imageUrls: frames,
     schema: VisionScore,
   });
 }
 
-/** Find the still's parts, then animate callouts over it with the motion engine. */
-async function overlayCallouts(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], still: MirroredAsset, qa: QaResult[], cast: CastMember[]): Promise<CodeRender | null> {
-  const res = await fetch(still.url);
-  if (!res.ok) return null;
-  const image: OverlayImage = { data: new Uint8Array(await res.arrayBuffer()), type: res.headers.get("content-type") ?? still.contentType };
-  const layout = await ctx.llm.vision({
-    system: "List the visually distinct parts of this illustration that the narration talks about or that explain it (up to 8). For each, a short name and a tight bounding box in normalized coordinates (0–1, origin top-left; x0 < x1, y0 < y1).",
-    user: `Narration: ${scene.narration}\nDirection: ${scene.visualDirection}`,
-    imageUrls: [still.url],
-    schema: StillLayout,
-  });
-  // The still is cover-fitted to 1920×1080 underneath the overlay.
-  const parts: StillPart[] = layout.parts
-    .filter((p) => p.x1 > p.x0 && p.y1 > p.y0)
-    .slice(0, 8)
-    .map((p) => ({ name: p.name, box: [p.x0 * 1920, p.y0 * 1080, p.x1 * 1920, p.y1 * 1080].map((v) => Math.round(Math.min(1920, Math.max(0, v)))) as StillPart["box"] }));
-  if (!parts.length) return null;
-  return renderCodeScene(ctx, brief, { ...scene, visualType: "motion" }, audio, qa, cast, { image, parts });
-}
+type CodeRender = { asset: MirroredAsset; sounds: SoundCue[] };
 
 /**
  * Write → render → check, up to three times, feeding render errors and reviewer
  * notes back. Keeps the best render that worked. Manim scenes that never pass
  * use a plain safe scene; a 3D scene returns null so the caller can demote it.
  */
-async function renderCodeScene(
-  ctx: Ctx,
-  brief: Brief,
-  scene: Scene,
-  audio: SceneAssets["audio"],
-  qa: QaResult[],
-  cast: CastMember[] = [],
-  overlay?: { image: OverlayImage; parts: StillPart[] },
-): Promise<CodeRender | null> {
+async function renderCodeScene(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], qa: QaResult[], cast: CastMember[] = []): Promise<CodeRender | null> {
   const engine = scene.visualType as Engine;
   const progress = makeProgress(ctx, brief.projectId, "visuals");
   const n = scene.id.slice(1);
   const durationS = +(audio.durationS + VIDEO_TIMING.sceneTailS).toFixed(2);
   const background = codeBackground(brief);
-  const rules = (engine === "manim" ? MANIM_RULES : engine === "motion" ? motionRules(brief.background, overlay?.parts) : threeRules(brief.style, brief.background))
+  const rules = (engine === "manim" ? MANIM_RULES : threeRules(brief.style, brief.background))
     .replaceAll("{DURATION}", durationS.toFixed(1))
     .replaceAll("{BUDGET}", Math.max(1, durationS - 0.5).toFixed(1))
     .replaceAll("{FRAMES}", String(Math.round(durationS * 30)));
@@ -416,40 +430,30 @@ async function renderCodeScene(
     `Scene ${n} (${scene.beat}): ${scene.purpose}`,
     `What is seen: ${scene.visualDirection}`,
     scene.onScreenTerms.length ? `Terms that may appear as labels: ${scene.onScreenTerms.join(", ")}` : "",
-    cast.length && !overlay ? `Recurring cast (draw these exactly so, the same as in every other scene):\n${castLines(cast)}` : "",
+    cast.length ? `Recurring cast (draw these exactly so, the same as in every other scene):\n${castLines(cast)}` : "",
     `Narration timeline (seconds from the start of the scene):\n${narrationTimeline(scene.narration, audio.words)}`,
   ].filter(Boolean).join("\n\n");
-
-  // Motion scenes are planned shot by shot first; the code follows the plan and the reviewer checks against it.
-  let shots = "";
-  if (engine === "motion") {
-    await progress(`planning the shots for scene ${n}`, 0.3);
-    const plan = await ctx.llm.json({ system: SHOT_LIST_RULES, user: brief0, schema: ShotList, maxTokens: 1500 });
-    shots = `\n\nAt first glance this scene reads as: ${plan.glance}\nSubject: ${plan.subject}\n\nShot list (follow it; seconds from the start of the scene):\n${plan.shots.slice(0, 10).map((s) => `[${s.at.toFixed(1)} s] ${s.action}`).join("\n")}`;
-  }
 
   let feedback = "";
   let best: { asset: MirroredAsset; score: number; sounds: SoundCue[] } | null = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const what = engine === "three" ? "3D scene" : overlay ? "animation over the picture" : "animation";
+    const what = engine === "manim" ? "Manim scene" : "3D scene";
     await progress(`${attempt === 1 ? "writing" : "fixing"} the ${what} for scene ${n}`, 0.3 + 0.15 * attempt);
-    const { code: raw, sounds } = await ctx.llm.json({ system: rules, user: brief0 + shots + feedback, schema: SceneCode, maxTokens: 6000 });
+    const { code: raw, sounds } = await ctx.llm.json({ system: rules, user: brief0 + feedback, schema: SceneCode, maxTokens: 6000 });
     const code = stripFences(raw);
-    const r = await ctx.animator.render(engine, code, durationS, background, overlay?.image);
+    const r = await ctx.animator.render(engine, code, durationS, background);
     if (!r.ok) {
       qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: attempt, fallback: null, notes: `${engine} code failed: ${r.error.slice(-300)}` });
-      feedback = `\n\nYOUR PREVIOUS CODE FAILED. Fix it and return the full corrected code.\n--- code ---\n${code}\n--- error ---\n${r.error}`;
+      feedback = `\n\nYOUR PREVIOUS CODE FAILED. Fix it and return the full code.\n--- code ---\n${code}\n--- error ---\n${r.error.slice(-1500)}`;
       continue;
     }
-    const name = `${scene.id}-${overlay ? "overlay" : engine}-${attempt}.mp4`;
+    const name = `${scene.id}-${engine}-${attempt}.mp4`;
     const asset = await ctx.mirror.put(brief.projectId, name, r.video, "video/mp4", { width: 1920, height: 1080, durationMs: Math.round(durationS * 1000) });
     const mirrored: MirroredAsset = { ...asset, model: engine, costUsd: 0 };
-    const nFrames = engine === "motion" ? 5 : 3;
-    const frames = await ctx.frames.sample(mirrored.url, nFrames).catch(() => null);
+    const frames = await ctx.frames.sample(mirrored.url, 3).catch(() => null);
     const score = frames
-      ? await scoreCode(ctx, scene, engine, frames, Boolean(overlay), engine === "motion" ? { times: sampleTimes(durationS, nFrames), shots } : undefined)
-      : { matchesDirection: 0.7, styleMatch: 0.7, clarity: 0.7, hasText: false, notes: "frames unavailable; accepted unchecked" };
-    // Ranked and passed on the weakest of the three; a scene that isn't clear at a glance doesn't pass however correct it is.
+      ? await scoreCode(ctx, scene, engine, frames)
+      : { matchesDirection: 0.5, styleMatch: 0.5, clarity: 0.5, hasText: true, notes: "frames could not be sampled" };
     const s = Math.min(score.matchesDirection, score.styleMatch, score.clarity);
     const ok = score.matchesDirection >= PASS - 0.1 && score.styleMatch >= PASS && score.clarity >= CLEAR;
     qa.push({ check: "visual-matches-direction", passed: ok, score: s, attempts: attempt, fallback: null, notes: score.notes });
@@ -458,7 +462,7 @@ async function renderCodeScene(
     feedback = `\n\nYOUR PREVIOUS CODE RENDERED, but a reviewer looking at frames said: ${score.notes}${score.clarity < CLEAR ? " It was not clear at a glance: remove things rather than add; one subject, a few supporting details." : ""}\nImprove it and return the full code.\n--- code ---\n${code}`;
   }
 
-  if (!best && engine === "manim" && !overlay) {
+  if (!best && engine === "manim") {
     const r = await ctx.animator.render("manim", fallbackManim(scene.narration, scene.onScreenTerms), durationS, background);
     if (r.ok) {
       const asset = await ctx.mirror.put(brief.projectId, `${scene.id}-manim-fallback.mp4`, r.video, "video/mp4", { width: 1920, height: 1080, durationMs: Math.round(durationS * 1000) });
@@ -469,5 +473,3 @@ async function renderCodeScene(
   if (best) await progress(`animated scene ${n}`, 0.9, { sceneId: scene.id, clipUrl: best.asset.url });
   return best ? { asset: best.asset, sounds: best.sounds } : null;
 }
-
-type CodeRender = { asset: MirroredAsset; sounds: SoundCue[] };

@@ -7,14 +7,17 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./composition": "./src/Root.tsx"
+    "./composition": "./src/Root.tsx",
+    "./explainer": "./src/Explainer.tsx",
+    "./props": "./src/props.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "preview": "remotion studio src/Root.tsx",
     "render:sample": "tsx scripts/render-sample.ts",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "templates": "tsx scripts/render-templates.ts"
   },
   "dependencies": {
     "@explainer/schemas": "workspace:*",

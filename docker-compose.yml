@@ -71,15 +71,15 @@ services:
     cpus: 2
     pids_limit: 512
 
-  # Motion graphics, callouts over stills and 3D scenes: React code rendered with Remotion,
-  # from the app image without its secrets.
+  # 3D scenes in the 3Blue1Brown style: model-written three.js rendered with Remotion, from the
+  # app image without its secrets. Optional: Illustrated videos never use it.
   three:
     build: .
     image: explainer-app:local
     working_dir: /app/apps/web
     command: ["node", "--import", "tsx", "/app/packages/render/src/animator/three-server.ts"]
     environment:
-      # Scenes render two at a time; each uses two Chrome tabs. Give it cores if you have them.
+      # Scenes render two at a time; each uses two Chrome tabs.
       MAX_PARALLEL: 2
     networks: [sandbox]
     mem_limit: 4g

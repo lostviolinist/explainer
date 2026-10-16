@@ -7,9 +7,8 @@ import { ask } from "./actions";
 type Check = { name: string; status: "ok" | "warn" | "fail"; detail: string; fix?: string };
 type Style = "illustrated" | "math";
 
-/** Must match MANIM_CHECK / THREE_CHECK in lib/preflight.ts (kept out of this client bundle). */
+/** Must match MANIM_CHECK in lib/preflight.ts (kept out of this client bundle). */
 const MANIM_CHECK = "3Blue1Brown animator";
-const THREE_CHECK = "Motion & 3D animator";
 
 const STYLES: { id: Style; name: string; blurb: string; icon: React.ReactNode }[] = [
   {
@@ -94,15 +93,12 @@ export function AskForm() {
   const [style, setStyle] = useState<Style>("illustrated");
   const failing = checks?.filter((c) => c.status === "fail") ?? [];
   const warnings = checks?.filter((c) => c.status === "warn") ?? [];
-  // Each style needs its animation sandbox: without it the video would be still pictures, so the style is off.
-  const okCheck = (name: string) => checks === null || checks.find((c) => c.name === name)?.status === "ok";
-  const mathReady = okCheck(MANIM_CHECK);
-  const flatReady = okCheck(THREE_CHECK);
-  const blocked = failing.length > 0 || (!mathReady && !flatReady);
+  // The 3Blue1Brown style needs its Manim sandbox; the Illustrated style needs nothing beyond the keys.
+  const mathReady = checks === null || checks.find((c) => c.name === MANIM_CHECK)?.status === "ok";
+  const blocked = failing.length > 0;
   useEffect(() => {
-    if (!mathReady && style === "math" && flatReady) setStyle("illustrated");
-    if (!flatReady && style === "illustrated" && mathReady) setStyle("math");
-  }, [mathReady, flatReady, style]);
+    if (!mathReady && style === "math") setStyle("illustrated");
+  }, [mathReady, style]);
 
   return (
     <>
@@ -115,7 +111,7 @@ export function AskForm() {
         <input type="hidden" name="style" value={style} />
         <div className="styles" role="radiogroup" aria-label="Video style">
           {STYLES.map((s) => {
-            const unavailable = s.id === "math" ? !mathReady : !flatReady;
+            const unavailable = s.id === "math" && !mathReady;
             return (
               <button
                 key={s.id}
@@ -137,7 +133,7 @@ export function AskForm() {
           })}
         </div>
       </form>
-      {(blocked || details) && (
+      {(blocked || details || (checks && !mathReady)) && (
         <div className="setup">
           {blocked && !details && (
             <div className="setup-problems">
@@ -145,9 +141,7 @@ export function AskForm() {
               <div className="small">A service we rely on is unavailable. Please try again in a few minutes.</div>
             </div>
           )}
-          {!blocked && !details && checks && (!flatReady || !mathReady) && (
-            <div className="small">The {flatReady ? "3Blue1Brown" : "Illustrated"} style is unavailable right now; the other still works.</div>
-          )}
+          {!blocked && !details && checks && !mathReady && <div className="small">The 3Blue1Brown style is unavailable right now; Illustrated still works.</div>}
           {details && !checks && !error && <span className="small">Checking the setup (OpenAI, Exa, Hedra, storage, renderer, animators)…</span>}
           {details && error && <span className="small">Couldn't run the setup check: {error}</span>}
           {details && checks && (

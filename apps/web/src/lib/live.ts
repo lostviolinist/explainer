@@ -4,6 +4,7 @@
  * are merged in on the client so nothing waits for a stage to finish.
  */
 import type { Brief, ResearchBrief, ScenePlan, SceneAssets } from "@explainer/schemas";
+import { buildRenderProps, type RenderProps } from "@explainer/pipeline";
 import { latest, drizzleStore } from "./store";
 
 export type LiveScene = {
@@ -26,6 +27,8 @@ export type LiveState = {
   facts: { text: string; domain?: string }[];
   quiz: { statement: string; answer: "myth" | "fact"; explanation: string }[];
   scenes: LiveScene[];
+  /** The composition's props for the finished scenes, so the rough cut plays what the final render will draw. */
+  roughCut: RenderProps | null;
 };
 
 const domainOf = (url?: string) => (url ? new URL(url).hostname.replace(/^www\./, "") : undefined);
@@ -56,11 +59,21 @@ export async function getLiveState(projectId: string): Promise<LiveState> {
   const quiz = Array.from({ length: Math.max(myths.length, truths.length) }, (_, i) => [myths[i], truths[i]]).flat().filter((q): q is NonNullable<typeof q> => Boolean(q));
 
   const byScene = new Map(assets.map((a) => [a.sceneId, a]));
+  const finished = (plan?.scenes ?? []).filter((s) => byScene.has(s.id));
+  let roughCut: RenderProps | null = null;
+  if (brief && plan && research && finished.length) {
+    try {
+      roughCut = buildRenderProps(brief, { ...plan, scenes: finished }, assets, research);
+    } catch {
+      roughCut = null;
+    }
+  }
   return {
     brief: brief ? { learningGoal: brief.learningGoal, level: brief.level, tone: brief.tone, lengthS: brief.lengthS, style: brief.style ?? "illustrated" } : null,
     sources: (research?.sources ?? []).map((s) => ({ url: s.url, title: s.title, domain: s.domain })),
     facts: ranked.slice(0, 12).map((c) => ({ text: c.text, domain: domainOf(c.sources[0]?.url) })),
     quiz,
+    roughCut,
     scenes: (plan?.scenes ?? []).map((s) => {
       const a = byScene.get(s.id);
       return {

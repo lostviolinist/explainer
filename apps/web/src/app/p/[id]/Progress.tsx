@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import type { LiveScene, LiveState } from "@/lib/live";
 import { ask } from "@/app/actions";
 import { PendingButton, PendingNote } from "@/app/pending";
@@ -48,11 +49,17 @@ const BEAT_LABEL: Record<string, string> = {
   recap: "Recap",
 };
 const LEVEL_LABEL: Record<string, string> = { nothing: "Beginner", basics: "Some background", deep: "Deep dive" };
-const PROGRAMMATIC = new Set(["chart", "text"]);
-/** Scenes whose animation is written as code (Manim / three.js / flat motion graphics): no still, just the render. */
-const CODED = new Set(["manim", "three", "motion"]);
-/** Scenes whose still gets motion afterwards (a Hedra clip, or callouts animated over a diagram). */
-const MOVING = new Set(["still-animated", "clip", "reference-seq", "diagram"]);
+/** Scenes the composition draws from a template (nothing generated): shown as a frame of the real thing once their voice exists. */
+const PROGRAMMATIC = new Set(["chart", "text", "motion"]);
+/** Scenes whose animation is written as code (Manim / three.js, the 3Blue1Brown style): no still, just the render. */
+const CODED = new Set(["manim", "three"]);
+/** Scenes whose still gets a Hedra clip afterwards. */
+const MOVING = new Set(["still-animated", "clip", "reference-seq"]);
+const TEMPLATE_LABEL: Record<string, string> = { chart: "Chart", text: "Key points", motion: "Motion graphics" };
+
+// The Remotion player is browser-only.
+const RoughCutPlayer = dynamic(() => import("./RoughCutPlayer").then((m) => m.RoughCutPlayer), { ssr: false });
+const SceneThumb = dynamic(() => import("./RoughCutPlayer").then((m) => m.SceneThumb), { ssr: false, loading: () => <div className="shimmer" /> });
 
 /** Watch the video get made: stages, live storyboard, sources, facts and a quiz while you wait. */
 export function Progress({ projectId, question, initial, initialLive }: { projectId: string; question: string; initial: Ev[]; initialLive: LiveState }) {
@@ -198,8 +205,8 @@ export function Progress({ projectId, question, initial, initialLive }: { projec
           )}
           {view.scenes.length > 0 ? (
             <>
-              <RoughCut scenes={view.scenes} finished={last?.stage === "done"} />
-              <Storyboard scenes={view.scenes} />
+              <RoughCut live={live} total={view.scenes.length} finished={last?.stage === "done"} />
+              <Storyboard scenes={view.scenes} props={live.roughCut} />
             </>
           ) : (
             <>
@@ -359,70 +366,24 @@ function MythQuiz({ items }: { items: LiveState["quiz"] }) {
  * and captions, while the final video (music, transitions, sound) still renders.
  * Nothing is rendered for this; it plays the scene assets straight from the bucket.
  */
-function RoughCut({ scenes, finished }: { scenes: LiveScene[]; finished: boolean }) {
-  const [index, setIndex] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const [t, setT] = useState(0);
-  const audio = useRef<HTMLAudioElement | null>(null);
-  const ready = scenes.filter((s) => s.done && s.audioUrl).length;
-  // The contiguous run of finished scenes from the start: that's what can be played in order.
-  let playable = 0;
-  while (playable < scenes.length && scenes[playable]!.done && scenes[playable]!.audioUrl) playable++;
-  const scene = scenes[index];
-
-  useEffect(() => {
-    const a = audio.current;
-    if (!a || !scene?.audioUrl) return;
-    if (playing) a.play().catch(() => setPlaying(false));
-    else a.pause();
-  }, [playing, index, scene?.audioUrl]);
-
-  if (finished || !playable) return null;
-
-  const next = () => {
-    if (index + 1 < playable) {
-      setIndex(index + 1);
-      setT(0);
-    } else setPlaying(false);
-  };
-  const words = scene?.words ?? [];
-  // Caption: the sentence being spoken, with the current word marked.
-  const tokens = scene?.narration.split(/\s+/).filter(Boolean) ?? [];
-  let current = -1;
-  words.forEach((w, i) => {
-    if (w.start <= t) current = i;
-  });
-  let from = 0;
-  let to = tokens.length - 1;
-  for (let i = current; i >= 0; i--) if (i < current && /[.!?]["')\]]?$/.test(tokens[i]!)) { from = i + 1; break; }
-  for (let i = Math.max(current, 0); i < tokens.length; i++) if (/[.!?]["')\]]?$/.test(tokens[i]!)) { to = i; break; }
-
+/**
+ * The rough cut: the real composition, played in the browser with the scenes
+ * that are finished so far (narration, captions, templates, transitions; the
+ * music is mixed in at the end).
+ */
+function RoughCut({ live, total, finished }: { live: LiveState; total: number; finished: boolean }) {
+  const props = live.roughCut;
+  if (finished || !props?.scenes.length) return null;
   return (
     <section className="card roughcut">
       <div className="section-head">
         <h2>Rough cut</h2>
-        <span className="small">{playable} of {scenes.length} scenes · no music or transitions yet</span>
+        <span className="small">{props.scenes.length} of {total} scenes · no music yet</span>
       </div>
       <div className="roughcut-frame">
-        {scene?.clipUrl ? <video key={scene.id} src={scene.clipUrl} muted loop autoPlay playsInline /> : scene?.stillUrl ? <img key={scene.id} src={scene.stillUrl} alt="" /> : <div className="shimmer" />}
-        {current >= 0 && (
-          <div className="roughcut-caption">
-            {tokens.slice(from, to + 1).map((w, k) => (
-              <span key={k} className={from + k === current ? "now" : from + k < current ? "said" : ""}>{w} </span>
-            ))}
-          </div>
-        )}
-        <audio ref={audio} src={scene?.audioUrl} onTimeUpdate={(e) => setT(e.currentTarget.currentTime)} onEnded={next} />
+        <RoughCutPlayer props={props as never} />
       </div>
-      <div className="roughcut-controls">
-        <button type="button" className="btn" onClick={() => setPlaying(!playing)}>{playing ? "❚❚ Pause" : index === 0 && t === 0 ? "▶ Watch the rough cut" : "▶ Resume"}</button>
-        <span className="small">Scene {index + 1} of {scenes.length}{ready < scenes.length ? " · the rest is still being made" : ""}</span>
-        <span className="roughcut-dots">
-          {scenes.map((s, i) => (
-            <button key={s.id} type="button" className={i === index ? "on" : i < playable ? "" : "off"} disabled={i >= playable} onClick={() => { setIndex(i); setT(0); }} aria-label={`Scene ${i + 1}`} />
-          ))}
-        </span>
-      </div>
+      {props.scenes.length < total && <p className="small roughcut-note">The rest is still being made; it joins the cut as it finishes.</p>}
     </section>
   );
 }
@@ -433,10 +394,11 @@ function sceneStatus(s: LiveScene): { label: string; tone: "wait" | "work" | "re
   if (CODED.has(s.visualType)) return s.clipUrl ? { label: "Ready", tone: "ready" } : { label: s.audioUrl ? (s.visualType === "three" ? "Building 3D scene" : "Writing animation") : "Recording voice", tone: "work" };
   if (!s.stillUrl) return { label: s.audioUrl ? "Drawing" : "Recording voice", tone: "work" };
   if (MOVING.has(s.visualType) && !s.clipUrl) return { label: "Animating", tone: "work" };
+  if (s.visualType === "diagram") return { label: "Placing labels", tone: "work" };
   return { label: "Checking", tone: "work" };
 }
 
-function Storyboard({ scenes }: { scenes: LiveScene[] }) {
+function Storyboard({ scenes, props }: { scenes: LiveScene[]; props: LiveState["roughCut"] }) {
   const [playing, setPlaying] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const toggle = (s: LiveScene) => {
@@ -470,8 +432,10 @@ function Storyboard({ scenes }: { scenes: LiveScene[] }) {
                   <video src={s.clipUrl} muted loop autoPlay playsInline className="appear" />
                 ) : s.stillUrl ? (
                   <img src={s.stillUrl} alt="" className="appear" />
+                ) : PROGRAMMATIC.has(s.visualType) && s.done && props?.scenes.some((p) => p.id === s.id) ? (
+                  <div className="appear"><SceneThumb props={props as never} sceneId={s.id} /></div>
                 ) : PROGRAMMATIC.has(s.visualType) ? (
-                  <div className="programmatic">{s.visualType === "chart" ? "Chart" : "Title card"}<span>animated in the edit</span></div>
+                  <div className="programmatic">{TEMPLATE_LABEL[s.visualType] ?? "Motion graphics"}<span>animated in the edit</span></div>
                 ) : (
                   <div className="shimmer" />
                 )}

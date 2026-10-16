@@ -37,10 +37,10 @@ export const sampleProps: ExplainerProps = {
       narration: narration2,
       visualType: "diagram",
       animSpec: {
-        kind: "labelled-diagram",
-        labels: [
-          { text: "straight path", cueWord: "straight" },
-          { text: "bent by gravity", cueWord: "gravity" },
+        kind: "reveal",
+        items: [
+          { label: "straight path", cue: "straight", x: 0.3, y: 0.4 },
+          { label: "bent by gravity", cue: "gravity", x: 0.62, y: 0.55 },
         ],
       },
       audioUrl: `${base}/sample/s2.mp3`,

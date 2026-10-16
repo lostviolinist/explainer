@@ -113,7 +113,7 @@ const NARRATION: Record<string, string> = {
   payoff: "Blue light scatters about five times more than red light. That is Rayleigh scattering.",
   recap: "After watching, you can explain why the daytime sky looks blue.",
 };
-const TYPES: Record<string, string> = { hook: "still-animated", ground: "diagram", misconception: "clip", "build-up": "three", core: "reference-seq", payoff: "chart", recap: "text" };
+const TYPES: Record<string, string> = { hook: "still-animated", ground: "diagram", misconception: "clip", "build-up": "motion", core: "reference-seq", payoff: "chart", recap: "text" };
 const BEATS = Object.keys(NARRATION);
 const MOTION_NARRATION = "A blue ray zig-zags from molecule to molecule. Wherever you look, some of it arrives.";
 
@@ -139,8 +139,10 @@ function answer(system: string, user: string): unknown {
   };
   if (/exactly seven beats/.test(system)) return { beats: BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, claimIds: ["c1", "c2"], targetS: 17 })) };
   if (/Write the scenes for this arc/.test(system)) {
-    const scenes = BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, narration: NARRATION[b], claimIds: ["c1", "c2"], visualDirection: `a sunbeam as a bundle of coloured threads for the ${b}, with air molecules as tiny beads and an eye looking up`, visualType: TYPES[b], targetS: b === "misconception" ? 60 : 12, onScreenTerms: b === "ground" ? ["wavelength"] : [] }));
-    // A second core scene as flat motion graphics (Manim in the math style, an animated still without the motion engine).
+    // The math menu offers 3D scenes when its sandbox runs; the Illustrated menu never does.
+    const threeOffered = /three \(a 3D/.test(system);
+    const scenes = BEATS.map((b) => ({ beat: b, purpose: `the ${b}`, narration: NARRATION[b], claimIds: ["c1", "c2"], visualDirection: `a sunbeam as a bundle of coloured threads for the ${b}, with air molecules as tiny beads and an eye looking up`, visualType: b === "build-up" && threeOffered ? "three" : TYPES[b], targetS: b === "misconception" ? 60 : 12, onScreenTerms: b === "ground" ? ["wavelength"] : [] }));
+    // A second core scene as flat motion graphics (a comparison template; Manim in the math style).
     scenes.splice(5, 0, { beat: "core", purpose: "show blue bouncing around", narration: MOTION_NARRATION, claimIds: ["c2"], visualDirection: "a sun on the left firing a ray that zig-zags off air molecules into a waiting eye", visualType: "motion", targetS: 12, onScreenTerms: [] });
     return { scenes, cast: [{ name: "sunbeam", look: "a bundle of coloured threads fanning out from a small sun", color: "#F2C14E" }, { name: "air molecule", look: "a small round blue bead", color: "#8FB8E8" }, { name: "the eye", look: "a simple almond-shaped eye with a dark pupil", color: "#1B2235" }] };
   }
@@ -148,27 +150,22 @@ function answer(system: string, user: string): unknown {
   if (/expressive narrator/.test(system)) return { text: `[curious] ${user.replace(/\. /, "... ")}` };
   if (/careful subject expert/.test(system)) return { unsourced: [], overstated: [] };
   if (/You write generation prompts/.test(system)) {
-    const type = /\(([a-z-]+), ([a-z-]+)\)/.exec(user)?.[2];
-    const animSpec =
-      type === "diagram" ? { kind: "labelled-diagram", labels: [{ text: "wavelength", cueWord: "wavelength" }, { text: "sunlight", cueWord: "Sunlight" }] }
-      : type === "chart" ? { kind: "chart", chartType: "bar", series: [{ label: "blue", value: 5 }, { label: "red", value: 1 }], claimId: "c3" }
-      : type === "text" ? { kind: "kinetic-text", lines: [{ text: "Short waves scatter most", cueWord: "explain" }] }
-      : { kind: "none" };
-    return { hedraPrompt: type === "chart" || type === "text" ? null : "Flat vector illustration, detailed. A sunbeam splitting into coloured threads. No text, no labels.", animSpec };
+    const prompt = "Flat vector illustration, detailed. A sunbeam splitting into coloured threads. No text, no labels. Leave the bottom-right quarter clear.";
+    if (/callouts:/.test(system)) return { hedraPrompt: prompt, callouts: [{ label: "wavelength", cue: "wavelength" }, { label: "sunlight", cue: "Sunlight" }] };
+    return { hedraPrompt: prompt };
   }
+  if (/choosing a template/.test(system)) {
+    if (user.includes(MOTION_NARRATION)) return { animSpec: { kind: "compare", title: "Where blue light goes", items: [{ label: "Blue", icon: "sun", value: 5, unit: "×", note: null, cue: "blue" }, { label: "Red", icon: "fire", value: 1, unit: "×", note: "mostly straight on", cue: "look" }], verdict: "Blue arrives from everywhere", verdictCue: "arrives" } };
+    return { animSpec: { kind: "steps", title: "What air is made of", cycle: false, steps: [{ label: "Air", sub: null, icon: "cloud", cue: "Air" }, { label: "Tiny molecules", sub: "nitrogen, oxygen", icon: "molecule", cue: "molecules" }, { label: "Smaller than light", sub: null, icon: "wave", cue: "smaller" }] } };
+  }
+  if (/bar chart/.test(system)) return { animSpec: { kind: "chart", title: "How much each colour scatters", unit: "×", series: [{ label: "Blue", value: 5, cue: "Blue" }, { label: "Red", value: 1, cue: "red" }], claimId: "c1" } };
+  if (/key points/.test(system)) return { animSpec: { kind: "points", title: null, points: [{ text: "Short waves scatter most", icon: "wave", cue: "explain" }, { text: "Blue reaches you from everywhere", icon: null, cue: "sky" }] } };
   if (/You write Manim Community Edition code/.test(system)) {
     // The hook's first attempt is broken, to exercise the fix loop.
     const broken = /\(hook\)/.test(user) && !/YOUR PREVIOUS CODE FAILED/.test(user);
     return { code: broken ? MANIM_CODE.replace("Create(axes)", "Creat(axes)") : MANIM_CODE, sounds: [{ at: 1, kind: "whoosh" }, { at: 2.5, kind: "pop" }] };
   }
   if (/You write a React Three Fiber scene/.test(system)) return { code: THREE_CODE, sounds: [] };
-  if (/plan the shots/.test(system)) return { subject: "a ray of sunlight", glance: "a ray bouncing off beads into an eye", shots: [{ at: 0.2, action: "the sun grows in on the left" }, { at: 1.5, action: "a ray draws on, bouncing off two molecules, to the eye" }, { at: 3, action: "dots flow along the ray" }] };
-  if (/motion-graphics module/.test(system)) {
-    if (!/Shot list/.test(user)) throw new Error("motion code was asked for without a shot list");
-    // Overlay mode lists the still's parts in pixels; point at the first one.
-    const box = /OVERLAY MODE[\s\S]*?- ([^:\n]+): \[(\d+), (\d+), (\d+), (\d+)\]/.exec(system);
-    return { code: box ? overlayCode(box[1]!, box.slice(2, 6).map(Number)) : MOTION_CODE, sounds: [{ at: 0.3, kind: "pop" }, { at: 1.6, kind: "whoosh" }] };
-  }
   if (/Final transcript check/.test(system)) return { driftedSentences: [] };
   if (/You are the intended learner/.test(system)) return { goalAnswer: "Blue scatters most.", couldMeetGoal: true, confusingScenes: [] };
   throw new Error(`fake LLM has no answer for: ${system.slice(0, 80)}`);
@@ -213,9 +210,9 @@ function fakeOpenAI(log: string[], bad: string[]) {
     for (const u of images) if (!/^data:image\//.test(u)) bad.push(`vision got a non-image input: ${u.slice(0, 60)}`);
     await pause();
     let ans: unknown;
-    if (/List the visually distinct parts/.test(String(body.instructions ?? ""))) {
-      log.push("llm.vision layout");
-      ans = { parts: [{ name: "sunbeam", x0: 0.1, y0: 0.15, x1: 0.45, y1: 0.55 }, { name: "air molecules", x0: 0.5, y0: 0.2, x1: 0.85, y1: 0.6 }] };
+    if (/Locate the named parts/.test(String(body.instructions ?? ""))) {
+      log.push("llm.vision locate");
+      ans = { parts: [{ label: "wavelength", x: 0.3, y: 0.4 }, { label: "sunlight", x: null, y: null }] };
     } else if (images.length) {
       const n = ++visionCalls;
       log.push(`llm.vision ${images.length} image(s)`);
@@ -263,42 +260,6 @@ export default function Scene() {
         <meshToonMaterial color="#8FB8E8" />
       </mesh>
     </>
-  );
-}
-`;
-
-const MOTION_CODE = `import { Stage, Shape, Icon, Label, Move, Dots, circle, PALETTE } from "./Kit";
-
-const RAY = "M 420 420 L 800 300 L 1050 560 L 1420 400";
-
-export default function Scene() {
-  return (
-    <Stage camera={[{ at: 2.2, x: 900, y: 430, zoom: 1.3, over: 1.5 }, { at: 4.5, x: 960, y: 540, zoom: 1, over: 1.2 }]}>
-      <Icon name="sun" x={300} y={420} size={220} stroke={PALETTE.yellow} fill={PALETTE.yellow} at={0.2} over={1} />
-      <Label x={300} y={600} anchor="middle" at={0.8}>Sun</Label>
-      <Icon name="eye" x={1520} y={400} size={180} at={0.6} />
-      <Shape d={circle(800, 300, 28)} fill={PALETTE.blue} at={1.0} enter="grow" over={0.5} />
-      <Shape d={circle(1050, 560, 28)} fill={PALETTE.blue} at={1.2} enter="grow" over={0.5} />
-      <Shape d={RAY} stroke="#4A7FD0" at={1.5} over={1.5} />
-      <Move path={RAY} at={1.5} over={1.5}>
-        <Shape d={circle(420, 420, 16)} fill={PALETTE.red} at={1.5} enter="pop" over={0.3} />
-      </Move>
-      <Dots along={RAY} count={5} at={3} />
-    </Stage>
-  );
-}
-`;
-
-/** Callouts over a still: a spotlight and a ring on one part, with its label. */
-const overlayCode = (name: string, [x0 = 0, y0 = 0, x1 = 0, y1 = 0]: number[]) => `import { Stage, Circumscribe, Highlight, Label } from "./Kit";
-
-export default function Scene() {
-  return (
-    <Stage>
-      <Highlight x={${x0}} y={${y0}} w={${x1 - x0}} h={${y1 - y0}} at={0.3} until={3.5} />
-      <Circumscribe x={${x0}} y={${y0}} w={${x1 - x0}} h={${y1 - y0}} at={0.5} hold={2.5} />
-      <Label x={${x0}} y={${Math.max(90, y0 - 60)}} at={1.2}>${name}</Label>
-    </Stage>
   );
 }
 `;
@@ -460,7 +421,7 @@ async function main() {
     aligner: new FallbackAligner(new OpenAIAligner("sk-smoke"), (why) => bad.push(`word timing fell back to an estimate: ${why}`)),
     frames: new FfmpegFrameSampler(),
     // Real sandboxes when configured (the Docker stack sets these); otherwise no Manim / 3D scenes.
-    animator: new HttpAnimator({ manim: process.env.MANIM_URL || undefined, three: process.env.THREE_URL || undefined, motion: process.env.THREE_URL || undefined }),
+    animator: new HttpAnimator({ manim: process.env.MANIM_URL || undefined, three: process.env.THREE_URL || undefined }),
     store: drizzleStore,
     style: loadHouseStyle(),
     now: () => new Date().toISOString(),
@@ -483,7 +444,7 @@ async function main() {
   const engines = await ctx.animator.available();
   const runs: ("illustrated" | "math")[] = engines.includes("manim") ? ["illustrated", "math"] : ["illustrated"];
   if (!engines.includes("manim")) console.log("(MANIM_URL not set or not healthy: skipping the 3Blue1Brown-style run)");
-  if (!engines.includes("three")) console.log("(THREE_URL not set or not healthy: no 3D scenes, motion graphics or animated callouts)");
+  if (!engines.includes("three")) console.log("(THREE_URL not set or not healthy: no 3D scenes in the 3Blue1Brown style)");
   const fail: string[] = [];
   const kept: string[] = [];
 
@@ -542,9 +503,18 @@ async function main() {
       if (w[0]?.start !== TRANSCRIBE_LEAD || Math.abs((w[1]?.start ?? 0) - TRANSCRIBE_LEAD - TRANSCRIBE_STEP) > 0.001) f(`${s.id}: word timing is not the transcription's (${w.slice(0, 2).map((x) => `${x.w}@${x.start}`).join(" ")})`);
       if (w.length !== s.narration.split(/\s+/).filter(Boolean).length) f(`${s.id}: ${w.length} word timestamps for ${s.narration.split(/\s+/).length} words`);
       // Code scenes must have their render.
-      if (["manim", "three", "motion"].includes(s.visualType) && !a.visuals.some((v: any) => v.role === "animation")) f(`${s.id} (${s.visualType}) has no animation`);
-      // With the motion engine, a diagram's still gets callouts animated over it.
-      if (s.visualType === "diagram" && engines.includes("motion") && !a.visuals.some((v: any) => v.role === "animation" && /-overlay-\d\.mp4$/.test(v.asset.url))) f(`${s.id} (diagram) has no animated callouts`);
+      if (["manim", "three"].includes(s.visualType) && !a.visuals.some((v: any) => v.role === "animation")) f(`${s.id} (${s.visualType}) has no animation`);
+      // Template scenes are data for the composition: a spec in the plan, nothing generated.
+      if (["motion", "chart", "text"].includes(s.visualType)) {
+        if (!["steps", "compare", "count", "split", "points", "chart"].includes(s.render?.animSpec?.kind)) f(`${s.id} (${s.visualType}) has no template: ${JSON.stringify(s.render?.animSpec)}`);
+        if (a.visuals.length) f(`${s.id} (${s.visualType}) generated visuals it doesn't use`);
+      }
+      // A diagram's callouts are located on its still: at least one placed, the unfound one left for the column.
+      if (s.visualType === "diagram") {
+        const items = a.animSpec?.kind === "reveal" ? a.animSpec.items : [];
+        if (!items.some((i: any) => i.x !== null)) f(`${s.id} (diagram) has no located callouts: ${JSON.stringify(a.animSpec)}`);
+        if (!items.some((i: any) => i.x === null)) f(`${s.id} (diagram): the unfound part should stay unplaced`);
+      }
       offset += a.audio.durationS + 0.6;
     }
 
@@ -557,12 +527,13 @@ async function main() {
 
     if (style === "illustrated") {
       if (!qaFailed.some((q) => /MODERATION_FAILED/.test(q)) && !runLog.includes("hedra recraft-v3")) f("moderation fallback path not exercised");
-      if (engines.includes("three") && !plan.scenes.some((s: any) => s.visualType === "three")) f("no 3D scene though the three animator is running");
-      if (engines.includes("motion") && !plan.scenes.some((s: any) => s.visualType === "motion")) f("no motion-graphics scene though the motion engine is running");
-      if (engines.includes("motion") && !runLog.includes("llm.vision layout")) f("the diagram still's parts were never located");
+      if (plan.scenes.some((s: any) => s.visualType === "three")) f("a 3D scene in the Illustrated style");
+      if (plan.scenes.filter((s: any) => s.visualType === "motion").length !== 2) f("expected two motion-template scenes in the Illustrated plan");
+      if (!runLog.includes("llm.vision locate")) f("the diagram still's parts were never located");
     } else {
       if (hedraJobs.some((l) => !l.startsWith("hedra elevenlabs"))) f(`Hedra image/video jobs in the math style: ${hedraJobs.join(", ")}`);
       if (!plan.scenes.some((s: any) => s.visualType === "manim")) f("no Manim scene in the math style");
+      if (engines.includes("three") && !plan.scenes.some((s: any) => s.visualType === "three")) f("no 3D scene in the math style though the three animator is running");
       const notes = assets.flatMap((a) => a.qa.map((q: any) => String(q.notes ?? "")));
       if (!notes.some((n) => /manim code failed:[\s\S]*NameError: name 'Creat'/.test(n))) f("broken first Manim attempt wasn't fed back and fixed");
     }

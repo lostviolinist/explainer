@@ -9,7 +9,8 @@ import { research as runResearch } from "../src/stages/research.ts";
 import { pacingCheck } from "../src/stages/assemble.ts";
 import { renderSceneAssets, planScene } from "../src/stages/visuals.ts";
 import { visualTypesFor, fitVisualType } from "../src/stages/script.ts";
-import type { Animator, Engine, OverlayImage } from "../src/providers/animator.ts";
+import type { Animator, Engine } from "../src/providers/animator.ts";
+import { coverPoint } from "../src/stages/visuals.ts";
 import { evenSplit, rescale } from "../src/providers/alignment.ts";
 import type { LLM } from "../src/providers/llm.ts";
 import { noAnimator } from "../src/providers/animator.ts";
@@ -109,8 +110,8 @@ test("script passes learner and expert review on the first attempt and records i
 test("pacing check flags a scene more than 10% over target", () => {
   const plan: any = { scenes: [{ id: "s1", targetS: 20 }, { id: "s2", targetS: 30 }] };
   const assets: SceneAssets[] = [
-    { projectId: PID, sceneId: "s1", audio: { asset: {} as any, durationS: 21, words: [] }, visuals: [], sounds: [], qa: [] },
-    { projectId: PID, sceneId: "s2", audio: { asset: {} as any, durationS: 36, words: [] }, visuals: [], sounds: [], qa: [] },
+    { projectId: PID, sceneId: "s1", audio: { asset: {} as any, durationS: 21, words: [] }, visuals: [], sounds: [], animSpec: null, qa: [] },
+    { projectId: PID, sceneId: "s2", audio: { asset: {} as any, durationS: 36, words: [] }, visuals: [], sounds: [], animSpec: null, qa: [] },
   ];
   const r = pacingCheck(plan, assets);
   assert.equal(r[0]!.passed, true);
@@ -259,12 +260,11 @@ test("trimToFit drops whole middle scenes only when sentences run out, and keeps
 function codeCtx(opts: { render: (engine: Engine, code: string, durationS: number) => { ok: true } | { ok: false; error: string }; vision?: (n: number) => number }) {
   const prompts: { system: string; user: string }[] = [];
   const visionPrompts: string[] = [];
-  const renders: { engine: Engine; code: string; durationS: number; background: string; image?: OverlayImage }[] = [];
+  const renders: { engine: Engine; code: string; durationS: number; background: string }[] = [];
   let visionCalls = 0;
   const llm: LLM = {
     async json<T>(a: { system: string; user: string; schema: z.ZodType<T> }) {
       prompts.push({ system: a.system, user: a.user });
-      if (/plan the shots/.test(a.system)) return a.schema.parse({ subject: "a ray of sunlight", glance: "a ray bouncing off beads into an eye", shots: [{ at: 0.5, action: "the sun grows in on the left" }, { at: 2, action: "a ray draws on to the eye" }] });
       return a.schema.parse({ code: `class GeneratedScene(Scene):\n    # attempt ${prompts.length}\n    def construct(self): pass`, sounds: [{ at: 2.5, kind: "pop" }, { at: 0.5, kind: "whoosh" }, { at: 0.7, kind: "tick" }, { at: 99, kind: "chime" }] });
     },
     async vision<T>(a: { system: string; schema: z.ZodType<T> }) {
@@ -275,9 +275,9 @@ function codeCtx(opts: { render: (engine: Engine, code: string, durationS: numbe
   };
   const ctx = ctxWith(llm);
   ctx.animator = {
-    available: async () => ["manim", "three", "motion"],
-    render: async (engine, code, durationS, background, image) => {
-      renders.push({ engine, code, durationS, background, image });
+    available: async () => ["manim", "three"],
+    render: async (engine, code, durationS, background) => {
+      renders.push({ engine, code, durationS, background });
       const r = opts.render(engine, code, durationS);
       return r.ok ? { ok: true, video: new Uint8Array([1, 2, 3]) } : r;
     },
@@ -329,20 +329,15 @@ test("in the math style a 3D scene that never works becomes Manim; Manim that ne
   assert.ok(out.qa.some((q) => q.fallback === "safe Manim scene"));
 });
 
-test("styles offer their own scene types, limited to running engines", () => {
+test("styles offer their own scene types: the Illustrated menu needs no sandbox, the math menu needs Manim", () => {
   assert.deepEqual(visualTypesFor("math", ["manim", "three"]), ["manim", "three", "chart", "text"]);
   assert.deepEqual(visualTypesFor("math", ["manim"]), ["manim", "chart", "text"]);
-  assert.ok(visualTypesFor("illustrated", ["manim", "three"]).includes("three"));
-  assert.ok(!visualTypesFor("illustrated", ["manim", "three"]).includes("manim"));
-  assert.ok(!visualTypesFor("illustrated", []).includes("three"));
+  assert.deepEqual(visualTypesFor("illustrated", []), ["motion", "diagram", "chart", "text", "still-animated", "clip", "reference-seq"]);
+  assert.deepEqual(visualTypesFor("illustrated", ["manim", "three"]), visualTypesFor("illustrated", []), "sandboxes change nothing for the Illustrated style");
   assert.equal(fitVisualType("diagram", visualTypesFor("math", ["manim"])), "manim");
   assert.equal(fitVisualType("chart", visualTypesFor("math", ["manim"])), "chart");
-  assert.equal(fitVisualType("three", visualTypesFor("illustrated", [])), "still-animated");
-  assert.equal(fitVisualType("manim", visualTypesFor("illustrated", ["three"])), "diagram");
-  assert.equal(visualTypesFor("illustrated", ["three", "motion"])[0], "motion", "flat motion graphics lead the illustrated menu");
-  assert.ok(!visualTypesFor("illustrated", ["three"]).includes("motion"));
-  assert.ok(!visualTypesFor("math", ["manim", "motion"]).includes("motion"));
-  assert.equal(fitVisualType("manim", visualTypesFor("illustrated", ["motion"])), "motion");
+  assert.equal(fitVisualType("three", visualTypesFor("illustrated", [])), "motion", "a 3D wish becomes motion graphics");
+  assert.equal(fitVisualType("manim", visualTypesFor("illustrated", [])), "motion");
   assert.equal(fitVisualType("presenter", visualTypesFor("illustrated", [])), "still-animated");
 });
 
@@ -363,72 +358,111 @@ test("a diagram whose stills are all rejected keeps the best one instead of goin
 });
 
 // ---------------------------------------------------------------------------
-// Flat motion graphics (illustrated style)
+// Templates (illustrated style): planned by the model, drawn by the composition
 
-test("an illustrated motion scene is written as flat motion graphics on the house background", async () => {
-  const { ctx, prompts, renders, visionPrompts } = codeCtx({ render: () => ({ ok: true }) });
-  const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, codeScene("motion"), codeAudio);
-  assert.deepEqual(renders.map((r) => [r.engine, r.background, r.image]), [["motion", "#F6F3EC", undefined]]);
-  assert.match(prompts[0]!.system, /plan the shots/, "the shots are planned first");
-  assert.match(prompts[1]!.system, /motion-graphics module/);
-  assert.match(prompts[1]!.system, /\(198 frames\)/, "frame count filled in");
-  assert.match(prompts[1]!.system, /<Stage camera/, "the kit is explained");
-  assert.match(prompts[1]!.user, /Shot list[\s\S]*\[2\.0 s\] a ray draws on to the eye/, "the code follows the shot list");
-  assert.doesNotMatch(prompts[1]!.system, /OVERLAY MODE/);
-  assert.deepEqual(out.visuals.map((v) => v.role), ["animation"]);
-  assert.match(out.visuals[0]!.asset.url, /s2-motion-1\.mp4$/);
-  assert.match(visionPrompts[0]!, /frames are in time order, at t = 0\.5, 1\.9, 3\.3, 4\.7, 6\.1 s/, "the reviewer knows when each frame is");
-  assert.deepEqual(out.sounds, [{ at: 0.5, kind: "whoosh" }, { at: 2.5, kind: "pop" }], "sound cues sorted, not on top of each other, inside the scene");
+const motionScene: Scene = { ...codeScene("motion"), visualDirection: "the sun warms the ground, warm air rises, cools into cloud, rain falls", narration: "First the sun warms the ground. Then warm air rises. It cools into cloud, and rain falls." };
+
+test("an illustrated motion scene is a template the model fills in: no picture, no sandbox, nothing to review", async () => {
+  const steps = { kind: "steps", title: "How rain happens", cycle: false, steps: [{ label: "Sun warms ground", sub: null, icon: "sun", cue: "sun" }, { label: "Air rises", sub: null, icon: "cloud", cue: "rises" }, { label: "Rain falls", sub: null, icon: "drop", cue: "rain" }] };
+  const llm = scriptedLLM([[/choosing a template/, { animSpec: steps }]]);
+  const ctx = ctxWith(llm);
+  const render = await planScene(ctx, briefFor(120), motionScene, [{ name: "the sun", look: "a yellow disc", color: "#F2C14E" }]);
+  assert.deepEqual(render.animSpec, steps);
+  assert.equal(render.hedraPrompt, null);
+  assert.deepEqual(render.referenceAssetIds, []);
+  assert.match((llm as any).calls[0], /You plan one scene/);
+
+  const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, { ...motionScene, render }, codeAudio);
+  assert.deepEqual(out.visuals, [], "nothing generated");
+  assert.equal(out.animSpec, null, "the plan's spec is the final spec");
+  assert.ok(out.qa.some((q) => q.passed && q.notes === "template: steps"));
+  assert.equal((ctx.store as MemoryStore).events.at(-1)?.message, "built scene 2 (steps)");
 });
 
-/** A diagram scene with a fake Hedra still and a vision model that also maps the still's parts. */
-function diagramCtx(render: () => { ok: true } | { ok: false; error: string }, parts = [{ name: "chloroplast", x0: 0.1, y0: 0.2, x1: 0.3, y1: 0.5 }]) {
-  const { ctx, prompts, renders } = codeCtx({ render });
-  const layoutCalls: string[] = [];
-  ctx.llm.vision = async <T,>(a: { system: string; imageUrls: string[]; schema: z.ZodType<T> }) => {
-    if (/List the visually distinct parts/.test(a.system)) {
-      layoutCalls.push(a.imageUrls[0]!);
+test("a template the planner gets wrong is rejected by the schema, not drawn", async () => {
+  const llm = scriptedLLM([[/choosing a template/, { animSpec: { kind: "steps", title: null, cycle: false, steps: [{ label: "only one", sub: null, icon: "sun", cue: "sun" }] } }]]);
+  await assert.rejects(planScene(ctxWith(llm), briefFor(120), motionScene), /too_small|at least 2/i);
+  const bad = scriptedLLM([[/choosing a template/, { animSpec: { kind: "count", value: 71, unit: "%", label: "of the surface", cue: "Seventy", outOf: 100, comparison: { text: "two oceans", icon: "octopus", cue: "two" } } }]]);
+  await assert.rejects(planScene(ctxWith(bad), briefFor(120), motionScene), /octopus|invalid_enum/i);
+});
+
+test("chart and text scenes are templates too, with the claim id kept to the scene's claims", async () => {
+  const llm = scriptedLLM([
+    [/bar chart/, { animSpec: { kind: "chart", title: "Scattering", unit: "×", series: [{ label: "Blue", value: 5, cue: "Blue" }, { label: "Red", value: 1, cue: "red" }], claimId: "c9" } }],
+    [/key points/, { animSpec: { kind: "points", title: null, points: [{ text: "Short waves scatter most", icon: "wave", cue: "Short" }] } }],
+  ]);
+  const ctx = ctxWith(llm);
+  const chart = await planScene(ctx, briefFor(120), { ...codeScene("motion"), visualType: "chart", claimIds: ["c1"] });
+  assert.equal(chart.animSpec.kind, "chart");
+  assert.equal((chart.animSpec as any).claimId, "c1", "a claim id the scene doesn't cite is replaced");
+  const text = await planScene(ctx, briefFor(120), { ...codeScene("motion"), visualType: "text" });
+  assert.equal(text.animSpec.kind, "points");
+});
+
+/** A diagram scene with a fake Hedra still and a vision model that also locates the still's parts. */
+function diagramCtx(parts: { label: string; x: number | null; y: number | null }[] | Error, size: { width: number; height: number } = { width: 1920, height: 1080 }) {
+  const llm = scriptedLLM([[/You write generation prompts/, { hedraPrompt: "Flat vector illustration, detailed. A leaf cell as a factory. No text, no labels.", callouts: [{ label: "chloroplast", cue: "chloroplasts" }, { label: "cell wall", cue: "wall" }] }]]);
+  const locateCalls: { user: string; url: string }[] = [];
+  llm.vision = async <T,>(a: { system: string; user: string; imageUrls: string[]; schema: z.ZodType<T> }) => {
+    if (/Locate the named parts/.test(a.system)) {
+      locateCalls.push({ user: a.user, url: a.imageUrls[0]! });
+      if (parts instanceof Error) throw parts;
       return a.schema.parse({ parts });
     }
     return a.schema.parse({ matchesDirection: 0.9, styleMatch: 0.9, clarity: 0.9, hasText: false, notes: "ok" });
   };
-  ctx.hedra = { run: async (model: string) => ({ job_id: "j1", model, status: "COMPLETED", error: null, cost: 0.08, currency: "USD", outputs: [{ status: "COMPLETED", asset_id: "asset_still", voice_id: null, url: "https://h/1", content_type: "image/png", width: 1920, height: 1080, duration_ms: null, fps: null, error: null }] }) } as any;
-  (ctx.mirror as any).mirror = async (_p: string, o: any) => ({ hedraAssetId: o.asset_id, url: `http://localhost:9000/explainer-assets/${o.asset_id}`, contentType: o.content_type, width: o.width, height: o.height, durationMs: null });
-  const scene: Scene = { ...codeScene("motion"), visualType: "diagram", visualDirection: "a leaf cell as a factory, chloroplasts as solar panels", onScreenTerms: ["chloroplast"] };
-  return { ctx, prompts, renders, layoutCalls, scene };
+  const ctx = ctxWith(llm);
+  ctx.hedra = { run: async (model: string) => ({ job_id: "j1", model, status: "COMPLETED", error: null, cost: 0.08, currency: "USD", outputs: [{ status: "COMPLETED", asset_id: "asset_still", voice_id: null, url: "https://h/1", content_type: "image/png", width: size.width, height: size.height, duration_ms: null, fps: null, error: null }] }) } as any;
+  ctx.mirror = { mirror: async (_p: string, o: any) => ({ hedraAssetId: o.asset_id, url: `http://localhost:9000/explainer-assets/${o.asset_id}`, contentType: o.content_type, width: o.width, height: o.height, durationMs: null }) } as any;
+  const scene: Scene = { ...codeScene("motion"), visualType: "diagram", narration: "Inside, chloroplasts catch the light. The cell wall holds it all.", visualDirection: "a leaf cell as a factory, chloroplasts as solar panels", onScreenTerms: ["chloroplast"] };
+  return { ctx, locateCalls, scene };
 }
 
-async function withStillFetch<T>(fn: () => Promise<T>): Promise<T> {
-  const real = globalThis.fetch;
-  globalThis.fetch = (async (url: string) => (String(url).endsWith("asset_still") ? new Response(new Uint8Array([137, 80, 78, 71]), { headers: { "content-type": "image/png" } }) : real(url))) as typeof fetch;
-  try {
-    return await fn();
-  } finally {
-    globalThis.fetch = real;
-  }
-}
+test("a diagram's callouts are planned with the picture, then located on the still and mapped into the frame", async () => {
+  const { ctx, locateCalls, scene } = diagramCtx([{ label: "Chloroplast", x: 0.25, y: 0.5 }, { label: "cell wall", x: null, y: null }], { width: 1536, height: 1024 });
+  const render = await planScene(ctx, briefFor(120), scene);
+  assert.equal(render.animSpec.kind, "reveal");
+  assert.deepEqual((render.animSpec as any).items, [{ label: "chloroplast", cue: "chloroplasts", x: null, y: null }, { label: "cell wall", cue: "wall", x: null, y: null }]);
+  assert.match(render.hedraPrompt!, /^Flat vector illustration/);
 
-test("a diagram's still gets animated callouts: its parts are located, then pointed at as they're mentioned", async () => {
-  const { ctx, prompts, renders, layoutCalls, scene } = diagramCtx(() => ({ ok: true }));
-  const out = await withStillFetch(() => renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, scene, codeAudio));
-  assert.deepEqual(layoutCalls, ["http://localhost:9000/explainer-assets/asset_still"]);
-  assert.equal(renders.length, 1);
-  assert.equal(renders[0]!.engine, "motion");
-  assert.deepEqual([...renders[0]!.image!.data], [137, 80, 78, 71], "the still is sent with the code");
-  assert.equal(renders[0]!.image!.type, "image/png");
-  assert.match(prompts[1]!.system, /OVERLAY MODE[\s\S]*- chloroplast: \[192, 216, 576, 540\]/, "parts in 1920×1080 pixels");
-  assert.deepEqual(out.visuals.map((v) => v.role), ["background", "animation"], "the still stays as a fallback layer");
-  assert.match(out.visuals[1]!.asset.url, /s2-overlay-1\.mp4$/);
+  const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, { ...scene, render }, codeAudio);
+  assert.deepEqual(locateCalls.map((c) => c.url), ["http://localhost:9000/explainer-assets/asset_still"]);
+  assert.match(locateCalls[0]!.user, /Parts: chloroplast; cell wall/);
+  assert.deepEqual(out.visuals.map((v) => v.role), ["background"]);
+  assert.equal(out.animSpec?.kind, "reveal");
+  const items = (out.animSpec as any).items;
+  // A 3:2 still is cover-fitted into 16:9: x maps straight, y is cropped top and bottom.
+  assert.deepEqual(items[0], { label: "chloroplast", cue: "chloroplasts", ...coverPoint(0.25, 0.5, 1536, 1024) });
+  assert.equal(items[0].x, 0.25);
+  assert.equal(items[0].y, 0.5);
+  assert.deepEqual(items[1], { label: "cell wall", cue: "wall", x: null, y: null }, "an unfound part stays unplaced");
+  assert.ok(out.qa.some((q) => q.notes === "1 of 2 callouts located"));
 });
 
-test("a diagram keeps its plain still when the callout code never renders, or the still has no parts", async () => {
-  const failing = diagramCtx(() => ({ ok: false, error: "SyntaxError" }));
-  const out1 = await withStillFetch(() => renderSceneAssets(failing.ctx, briefFor(120), {} as ScenePlan, failing.scene, codeAudio));
-  assert.equal(failing.renders.length, 3);
-  assert.deepEqual(out1.visuals.map((v) => v.role), ["background"]);
+test("cover-fitting maps image points into the frame", () => {
+  assert.deepEqual(coverPoint(0.5, 0.5, 1536, 1024), { x: 0.5, y: 0.5 });
+  // A 3:2 image scaled to 1920 wide is 1280 tall: 100 px are cropped top and bottom.
+  assert.deepEqual(coverPoint(0, 0, 1536, 1024), { x: 0.02, y: 0.02 });
+  assert.deepEqual(coverPoint(0.5, 0.25, 1536, 1024), { x: 0.5, y: +((-100 + 0.25 * 1280) / 1080).toFixed(4) });
+  // A square image fills the width and is cropped top and bottom; a point on its left edge sits on the frame's.
+  assert.deepEqual(coverPoint(0, 0.5, 1000, 1000), { x: 0.02, y: 0.5 });
+  assert.deepEqual(coverPoint(0.5, 0.25, 1000, 1000), { x: 0.5, y: +((-420 + 0.25 * 1920) / 1080).toFixed(4) });
+  assert.deepEqual(coverPoint(0.3, 0.7, null, null), { x: 0.3, y: 0.7 });
+});
 
-  const empty = diagramCtx(() => ({ ok: true }), []);
-  const out2 = await withStillFetch(() => renderSceneAssets(empty.ctx, briefFor(120), {} as ScenePlan, empty.scene, codeAudio));
-  assert.equal(empty.renders.length, 0);
-  assert.deepEqual(out2.visuals.map((v) => v.role), ["background"]);
+test("when the parts can't be located the callouts stack beside the picture, and the still stays", async () => {
+  const { ctx, scene } = diagramCtx(new Error("vision down"));
+  const render = await planScene(ctx, briefFor(120), scene);
+  const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, { ...scene, render }, codeAudio);
+  assert.deepEqual(out.visuals.map((v) => v.role), ["background"]);
+  assert.equal(out.animSpec, null, "the plan's spec (no positions) is used as is");
+  assert.ok(out.qa.some((q) => q.fallback === "callouts listed beside the picture"));
+});
+
+test("a code scene in an Illustrated plan is not drawn as code", async () => {
+  const { ctx, renders } = codeCtx({ render: () => ({ ok: true }) });
+  ctx.llm.json = async <T,>(a: { schema: z.ZodType<T> }) => a.schema.parse({ hedraPrompt: "Flat vector illustration, detailed. A sun. No text, no labels." });
+  ctx.hedra = { run: async () => { throw new Error("stop here"); } } as any;
+  await assert.rejects(renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, codeScene("three"), codeAudio), /stop here/);
+  assert.equal(renders.length, 0, "the sandbox is never asked");
 });

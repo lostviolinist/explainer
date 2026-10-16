@@ -34,16 +34,16 @@ export const Beat = z.enum([
 export type Beat = z.infer<typeof Beat>;
 
 export const VisualType = z.enum([
-  "diagram", // programmatic over Hedra background/icons
-  "chart", // programmatic from research numbers
-  "text", // programmatic kinetic typography
+  "diagram", // a Hedra illustration with callouts that point at its parts as they're mentioned
+  "chart", // numbers from a claim, as bars (a motion template)
+  "text", // key points appearing as they're said (a motion template)
   "still-animated", // Hedra image → image-to-video
   "clip", // Hedra reference-driven video, new shot
   "reference-seq", // recurring character across scenes
   "presenter", // optional avatar
   "manim", // AI-written Manim code, 3Blue1Brown style (rendered in the animator sandbox)
-  "three", // AI-written three.js (React Three Fiber) 3D scene (rendered in the animator sandbox)
-  "motion", // AI-written 2D motion graphics in the flat house style (rendered in the animator sandbox)
+  "three", // AI-written three.js (React Three Fiber) 3D scene (rendered in the animator sandbox; 3Blue1Brown style only)
+  "motion", // flat motion graphics from a hand-designed template (steps, compare, count, split, points), filled in by the model
 ]);
 export type VisualType = z.infer<typeof VisualType>;
 
@@ -140,28 +140,89 @@ export type ResearchBrief = z.infer<typeof ResearchBrief>;
 // Stage 3 — Scene plan (extended by Stage 4 with render specs)
 // ---------------------------------------------------------------------------
 
-export const AnimSpec = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("labelled-diagram"),
-    labels: z.array(z.object({ text: z.string(), cueWord: z.string() })),
-  }),
-  z.object({
-    kind: z.literal("chart"),
-    chartType: z.enum(["bar", "line", "proportion"]),
-    series: z.array(z.object({ label: z.string(), value: z.number() })),
-    claimId: z.string(),
-  }),
-  z.object({
-    kind: z.literal("kinetic-text"),
-    lines: z.array(z.object({ text: z.string(), cueWord: z.string() })),
-  }),
-  z.object({
-    kind: z.literal("path-reveal"),
-    paths: z.array(z.object({ id: z.string(), cueWord: z.string() })),
-  }),
-  z.object({ kind: z.literal("none") }),
-]);
+/**
+ * Icons the motion templates can draw (packages/render/src/motion/icons.ts has
+ * the paths). The planner picks from this list, so a name is never invented.
+ */
+export const ICON_NAMES = [
+  "sun", "moon", "eye", "molecule", "leaf", "person", "people", "cloud", "gear", "clock", "drop", "star", "box", "heart", "bulb", "earth", "bolt", "arrow", "check", "cross", "question", "flask", "wave", "mountain", "book", "house", "tree", "brain", "rocket", "magnet", "battery", "thermometer", "magnifier", "coin", "dna",
+  "fire", "car", "factory", "phone", "shield", "virus", "atom", "scale", "lock", "calendar", "fish", "bird", "cup", "pencil", "bag", "lungs", "bone", "apple", "bread", "bed", "plane", "ship", "train", "music", "camera", "key", "map", "chart", "trophy", "gift", "hand",
+] as const;
+export const IconName = z.enum(ICON_NAMES);
+export type IconName = z.infer<typeof IconName>;
+
+/** A word (or two) from the narration: the thing appears when it is spoken. */
+const Cue = z.string().min(1).max(40);
+const Short = (max: number) => z.string().min(1).max(max);
+
+/** One side of a split: a heading ("Myth"), a short line, and when it appears. */
+export const SplitSide = z.object({ heading: Short(16), text: Short(72), icon: IconName.nullable(), cue: Cue });
+export type SplitSide = z.infer<typeof SplitSide>;
+
+/**
+ * What moves on screen, as data for one of the hand-designed motion templates
+ * in packages/render/src/motion. The model fills the words, icons, numbers and
+ * the narration word each thing appears on; the template does the design.
+ */
+export const NoneSpec = z.object({ kind: z.literal("none") });
+/** Steps in order (a process, a chain of cause and effect), or a cycle. */
+export const StepsSpec = z.object({
+  kind: z.literal("steps"),
+  title: Short(40).nullable(),
+  cycle: z.boolean(),
+  steps: z.array(z.object({ label: Short(24), sub: Short(24).nullable(), icon: IconName, cue: Cue })).min(2).max(5),
+});
+/** Two or three things side by side, with a quantity each when the point is a quantity. */
+export const CompareSpec = z.object({
+  kind: z.literal("compare"),
+  title: Short(40).nullable(),
+  items: z.array(z.object({ label: Short(24), icon: IconName, value: z.number().nullable(), unit: Short(12).nullable(), note: Short(32).nullable(), cue: Cue })).min(2).max(3),
+  verdict: Short(48).nullable(),
+  verdictCue: Cue.nullable(),
+});
+/** One number that matters, counted up, with what it is out of and what it compares to. */
+export const CountSpec = z.object({
+  kind: z.literal("count"),
+  value: z.number(),
+  unit: Short(16).nullable(),
+  label: Short(40),
+  cue: Cue,
+  outOf: z.number().nullable(),
+  comparison: z.object({ text: Short(60), icon: IconName, cue: Cue }).nullable(),
+});
+/** Two sides: myth and fact, before and after, what people think and what happens. */
+export const SplitSpec = z.object({
+  kind: z.literal("split"),
+  left: SplitSide,
+  right: SplitSide,
+  winner: z.enum(["left", "right", "neither"]),
+  verdictCue: Cue.nullable(),
+});
+/** Key points, one line each, appearing as they are said (recaps, "three things to know"). */
+export const PointsSpec = z.object({
+  kind: z.literal("points"),
+  title: Short(40).nullable(),
+  points: z.array(z.object({ text: Short(60), icon: IconName.nullable(), cue: Cue })).min(1).max(5),
+});
+/** Numbers from a claim, as bars that grow as each is named. */
+export const ChartSpec = z.object({
+  kind: z.literal("chart"),
+  title: Short(40).nullable(),
+  unit: Short(12).nullable(),
+  series: z.array(z.object({ label: Short(24), value: z.number(), cue: Cue })).min(2).max(5),
+  claimId: z.string(),
+});
+/** Callouts over an illustration: each part named as it is mentioned. x, y (0–1) are found by looking at the picture. */
+export const RevealSpec = z.object({
+  kind: z.literal("reveal"),
+  items: z.array(z.object({ label: Short(28), cue: Cue, x: z.number().min(0).max(1).nullable(), y: z.number().min(0).max(1).nullable() })).min(1).max(6),
+});
+
+export const AnimSpec = z.discriminatedUnion("kind", [NoneSpec, StepsSpec, CompareSpec, CountSpec, SplitSpec, PointsSpec, ChartSpec, RevealSpec]);
 export type AnimSpec = z.infer<typeof AnimSpec>;
+/** The templates a motion-graphics scene can be: what the planner chooses from. */
+export const MotionSpec = z.discriminatedUnion("kind", [StepsSpec, CompareSpec, CountSpec, SplitSpec, PointsSpec]);
+export type MotionSpec = z.infer<typeof MotionSpec>;
 
 export const RenderSpec = z.object({
   hedraPrompt: z.string().nullable(),
@@ -285,6 +346,8 @@ export const SceneAssets = z.object({
   ),
   /** Sound cues the scene's animation asked for (code scenes). */
   sounds: z.array(SoundCue).default([]),
+  /** The plan's animation spec, refined once the visuals exist (callouts placed on the still). */
+  animSpec: AnimSpec.nullable().default(null),
   qa: z.array(QaResult),
 });
 export type SceneAssets = z.infer<typeof SceneAssets>;

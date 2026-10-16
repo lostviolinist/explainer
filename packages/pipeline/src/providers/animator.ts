@@ -3,17 +3,14 @@
  * Code that fails to render comes back as an error message to feed to the model;
  * a sandbox that's down or unreachable throws, so the orchestrator retries the step.
  */
-export type Engine = "manim" | "three" | "motion";
-
-/** A still the motion engine draws its overlay on. */
-export type OverlayImage = { data: Uint8Array; type: string };
+export type Engine = "manim" | "three";
 
 export type AnimatorResult = { ok: true; video: Uint8Array } | { ok: false; error: string };
 
 export interface Animator {
   /** Engines that are configured and healthy right now. */
   available(): Promise<Engine[]>;
-  render(engine: Engine, code: string, durationS: number, background: string, image?: OverlayImage): Promise<AnimatorResult>;
+  render(engine: Engine, code: string, durationS: number, background: string): Promise<AnimatorResult>;
 }
 
 export class HttpAnimator implements Animator {
@@ -39,7 +36,7 @@ export class HttpAnimator implements Animator {
     return engines;
   }
 
-  async render(engine: Engine, code: string, durationS: number, background: string, image?: OverlayImage): Promise<AnimatorResult> {
+  async render(engine: Engine, code: string, durationS: number, background: string): Promise<AnimatorResult> {
     const url = this.urls[engine];
     if (!url) throw new Error(`${engine} animator is not configured`);
     const res = await this.f(`${url.replace(/\/$/, "")}/render`, {
@@ -50,7 +47,6 @@ export class HttpAnimator implements Animator {
         code,
         duration_s: Math.min(90, Math.max(1, durationS)),
         background,
-        ...(image ? { image: `data:${image.type};base64,${Buffer.from(image.data).toString("base64")}` } : {}),
       }),
       signal: AbortSignal.timeout(10 * 60_000),
     });
