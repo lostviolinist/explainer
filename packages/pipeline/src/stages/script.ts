@@ -91,13 +91,13 @@ export function trimToFit(scenes: Scene[], limitS: number, wordsPerMinute: numbe
 const TYPE_DESCRIPTIONS: Record<string, string> = {
   diagram: "diagram (a detailed illustration of what something looks like, whose parts get pointed out as they're mentioned: anatomy, machines, places)",
   chart: "chart (numbers from a claim)",
-  text: "text (key terms, recap)",
-  "still-animated": 'still-animated (metaphors, "imagine a…", historical scenes)',
+  text: "text (the recap's key points, one line each; only for the recap)",
+  "still-animated": 'still-animated (an illustrated scene that gently moves: people, places, events, objects, metaphors, "imagine a…"; the default for anything you can picture, and for every hook)',
   clip: "clip (establishing shots, nature, demonstrations)",
   "reference-seq": "reference-seq (a recurring character)",
   manim: "manim (the 3Blue1Brown look: equations, graphs, geometry, arrows, step-by-step derivations; the default in this style)",
   three: "three (a 3D animated model: orbits, molecules, light paths, anything spatial that reads better in 3D)",
-  motion: "motion (flat motion graphics from a designed template, for how things work: steps in order or a cycle; two or three things compared; one number that matters; a myth against the fact; a few key points. The default for explaining a process, a comparison or a quantity)",
+  motion: "motion (flat motion graphics from a designed template, beside an illustration of the subject: steps in order or a cycle, two or three things compared, one number that matters, or a myth against the fact. For a process, a comparison, a quantity or a correction; not for people, places or events, which are pictures)",
 };
 
 /**
@@ -108,6 +108,32 @@ const TYPE_DESCRIPTIONS: Record<string, string> = {
 export function visualTypesFor(style: Brief["style"], engines: string[]): Scene["visualType"][] {
   if (style === "math" && engines.includes("manim")) return ["manim", ...(engines.includes("three") ? (["three"] as const) : []), "chart", "text"];
   return ["motion", "diagram", "chart", "text", "still-animated", "clip", "reference-seq"];
+}
+
+/** Picture scenes: a generated illustration or clip is on screen. */
+const PICTURE = new Set<Scene["visualType"]>(["still-animated", "clip", "reference-seq", "diagram", "presenter"]);
+
+/**
+ * The Illustrated style must look illustrated: the hook is a picture, key
+ * points appear once (the recap), and at least a third of the scenes are
+ * pictures. The writer is told so; this makes sure of it.
+ */
+export function balanceTypes(scenes: Scene[]): Scene[] {
+  const out = scenes.map((s) => ({ ...s }));
+  if (!out.length) return out;
+  const hook = out[0]!;
+  if (!PICTURE.has(hook.visualType)) hook.visualType = "still-animated";
+  const texts = out.filter((s) => s.visualType === "text");
+  for (const s of texts.slice(0, -1)) s.visualType = "still-animated";
+  const need = Math.ceil(out.length / 3);
+  // Convert the templates least worth keeping first: key points, then steps; keep numbers and corrections.
+  for (const kind of ["text", "motion"] as const) {
+    for (const s of out) {
+      if (out.filter((x) => PICTURE.has(x.visualType)).length >= need) return out;
+      if (s.visualType === kind && s !== out.at(-1)) s.visualType = "still-animated";
+    }
+  }
+  return out;
 }
 
 /** Off-menu choices map to the closest type on offer. */
@@ -170,7 +196,7 @@ Each scene has three tracks:
 - narration: what is said. Short sentences. Every sentence maps to a claim id in claimIds. Introduce a term before using it. The hook is a question or a surprising fact; the recap restates the goal in one breath.
 - visualDirection: what is seen. It MUST name the scene's metaphor and at least two supporting details, never only the objects (good: "an eye as the observer, a dotted ring for the horizon, ghost stars where the light seems to come from"; bad: "a black hole and a star").
 - visualType, one of: ${offered.map((t) => TYPE_DESCRIPTIONS[t]).join("; ")}.
-Rules: one idea per scene; name a thing before showing its label; a misconception is stated, then corrected; the recap uses the exact words of the learning goal.
+Rules: one idea per scene; name a thing before showing its label; a misconception is stated, then corrected; the recap uses the exact words of the learning goal.${offered.includes("motion") ? "\nThis is an illustrated video: the hook is a picture (still-animated or clip), at least half the scenes are pictures (still-animated, clip, diagram), text is for the recap only, and motion is for a process, a comparison, a number or a correction, never for people, places or events." : ""}
 Keep people watching (without losing accuracy):
 - The first sentence is a concrete, surprising image or question, never a definition. Talk to the viewer ("you"). Short sentences, one idea each.
 - Plant a question early and answer it in the payoff; the recap calls back to the hook's image.
@@ -195,6 +221,7 @@ Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.${lengthNote ? `\nLEN
         render: null,
       }),
     );
+    if (brief.style !== "math") planScenes = balanceTypes(planScenes);
 
     // Length check, before any media is paid for. Over the cap → rewrite shorter (no review of the long draft).
     const estS = estimateVideoS(planScenes, wpm);

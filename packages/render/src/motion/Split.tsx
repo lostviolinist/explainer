@@ -1,7 +1,7 @@
 import { AbsoluteFill } from "remotion";
 import type { AnimSpec } from "@explainer/schemas";
 import type { ExplainerProps } from "../props.js";
-import { Cue, Disc, Icon, enter, useT } from "./Pieces.js";
+import { Cue, Disc, Icon, enter, useT, type Area } from "./Pieces.js";
 import { cueTimes, pulse } from "./timing.js";
 import type { Theme } from "./theme.js";
 
@@ -13,7 +13,7 @@ type Scene = ExplainerProps["scenes"][number];
  * side on its cue; at the verdict the losing side is stamped and dimmed, the
  * winning side is stamped and lifted.
  */
-export function Split({ spec, scene, theme, sfx }: { spec: Spec; scene: Scene; theme: Theme; sfx: Record<string, string> }) {
+export function Split({ spec, scene, theme, sfx }: { spec: Spec; scene: Scene; theme: Theme; sfx: Record<string, string>; area?: Area }) {
   const t = useT();
   const [leftAt, rightAt] = cueTimes(scene.words, scene.narration, scene.durationS, [spec.left.cue, spec.right.cue]);
   const verdictAt = spec.winner === "neither" ? Infinity : spec.verdictCue ? cueTimes(scene.words, scene.narration, scene.durationS, [spec.verdictCue])[0]! : Math.min(scene.durationS - 0.8, Math.max(leftAt!, rightAt!) + 1.3);

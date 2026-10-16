@@ -8,7 +8,7 @@ import { script, estimateVideoS, trimToFit } from "../src/stages/script.ts";
 import { research as runResearch } from "../src/stages/research.ts";
 import { pacingCheck } from "../src/stages/assemble.ts";
 import { renderSceneAssets, planScene } from "../src/stages/visuals.ts";
-import { visualTypesFor, fitVisualType } from "../src/stages/script.ts";
+import { visualTypesFor, fitVisualType, balanceTypes } from "../src/stages/script.ts";
 import type { Animator, Engine } from "../src/providers/animator.ts";
 import { coverPoint } from "../src/stages/visuals.ts";
 import { evenSplit, rescale } from "../src/providers/alignment.ts";
@@ -362,27 +362,57 @@ test("a diagram whose stills are all rejected keeps the best one instead of goin
 
 const motionScene: Scene = { ...codeScene("motion"), visualDirection: "the sun warms the ground, warm air rises, cools into cloud, rain falls", narration: "First the sun warms the ground. Then warm air rises. It cools into cloud, and rain falls." };
 
-test("an illustrated motion scene is a template the model fills in: no picture, no sandbox, nothing to review", async () => {
+/** A fake Hedra that draws one still, and a mirror that keeps it. */
+function withStill(ctx: Ctx) {
+  ctx.hedra = { run: async (model: string) => ({ job_id: "j1", model, status: "COMPLETED", error: null, cost: 0.08, currency: "USD", outputs: [{ status: "COMPLETED", asset_id: "asset_subject", voice_id: null, url: "https://h/subject", content_type: "image/png", width: 1024, height: 1536, duration_ms: null, fps: null, error: null }] }) } as any;
+  ctx.mirror = { mirror: async (_p: string, o: any) => ({ hedraAssetId: o.asset_id, url: `http://localhost:9000/explainer-assets/${o.asset_id}`, contentType: o.content_type, width: o.width, height: o.height, durationMs: null }) } as any;
+  return ctx;
+}
+
+test("an illustrated motion scene is a template the model fills in, beside a picture of its subject; no sandbox, no review loop", async () => {
   const steps = { kind: "steps", title: "How rain happens", cycle: false, steps: [{ label: "Sun warms ground", sub: null, icon: "sun", cue: "sun" }, { label: "Air rises", sub: null, icon: "cloud", cue: "rises" }, { label: "Rain falls", sub: null, icon: "drop", cue: "rain" }] };
-  const llm = scriptedLLM([[/choosing a template/, { animSpec: steps }]]);
-  const ctx = ctxWith(llm);
+  const llm = scriptedLLM([[/choosing a template/, { animSpec: steps, hedraPrompt: "Flat vector illustration, detailed. The sun over a field. No text, no labels." }]]);
+  const ctx = withStill(ctxWith(llm));
   const render = await planScene(ctx, briefFor(120), motionScene, [{ name: "the sun", look: "a yellow disc", color: "#F2C14E" }]);
   assert.deepEqual(render.animSpec, steps);
-  assert.equal(render.hedraPrompt, null);
-  assert.deepEqual(render.referenceAssetIds, []);
+  assert.match(render.hedraPrompt!, /^Flat vector illustration/);
+  assert.equal(render.referenceAssetIds.length, 1, "the house reference frame goes with the picture");
   assert.match((llm as any).calls[0], /You plan one scene/);
 
   const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, { ...motionScene, render }, codeAudio);
-  assert.deepEqual(out.visuals, [], "nothing generated");
+  assert.deepEqual(out.visuals.map((v) => [v.role, v.asset.url]), [["still", "http://localhost:9000/explainer-assets/asset_subject"]], "the subject picture, nothing else");
   assert.equal(out.animSpec, null, "the plan's spec is the final spec");
   assert.ok(out.qa.some((q) => q.passed && q.notes === "template: steps"));
   assert.equal((ctx.store as MemoryStore).events.at(-1)?.message, "built scene 2 (steps)");
 });
 
+test("a split fills the frame on its own: no picture is drawn for it", async () => {
+  const split = { kind: "split", left: { heading: "Myth", text: "Cold turns leaves red", icon: null, cue: "Short" }, right: { heading: "Fact", text: "Sugar does", icon: null, cue: "Blue" }, winner: "right", verdictCue: null };
+  const llm = scriptedLLM([[/choosing a template/, { animSpec: split, hedraPrompt: "Flat vector illustration, detailed. A leaf. No text, no labels." }]]);
+  const ctx = withStill(ctxWith(llm));
+  ctx.hedra = { run: async () => { throw new Error("no picture should be asked for"); } } as any;
+  const render = await planScene(ctx, briefFor(120), motionScene);
+  assert.equal(render.hedraPrompt, null);
+  const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, { ...motionScene, render }, codeAudio);
+  assert.deepEqual(out.visuals, []);
+});
+
+test("the Illustrated plan is kept illustrated: the hook is a picture, text is for the recap, a third are pictures", () => {
+  const mk = (id: string, visualType: Scene["visualType"], beat: Scene["beat"] = "core"): Scene => ({ ...codeScene("motion"), id, beat, visualType });
+  const slides = balanceTypes([mk("s1", "motion", "hook"), mk("s2", "text"), mk("s3", "motion"), mk("s4", "motion"), mk("s5", "text"), mk("s6", "text", "recap")]);
+  assert.deepEqual(slides.map((s) => s.visualType), ["still-animated", "still-animated", "motion", "motion", "still-animated", "text"], "hook and extra text scenes become pictures; the recap keeps its points");
+  const allMotion = balanceTypes([mk("s1", "motion", "hook"), mk("s2", "motion"), mk("s3", "motion"), mk("s4", "motion"), mk("s5", "motion"), mk("s6", "motion"), mk("s7", "motion")]);
+  assert.deepEqual(allMotion.map((s) => s.visualType), ["still-animated", "still-animated", "still-animated", "motion", "motion", "motion", "motion"], "a third are pictures, from the front, the last scene kept");
+  const fine = balanceTypes([mk("s1", "clip", "hook"), mk("s2", "motion"), mk("s3", "diagram"), mk("s4", "motion"), mk("s5", "text", "recap")]);
+  assert.deepEqual(fine.map((s) => s.visualType), ["clip", "motion", "diagram", "motion", "text"], "a balanced plan is left alone");
+  const numbers = balanceTypes([mk("s1", "motion", "hook"), mk("s2", "motion"), mk("s3", "motion")]);
+  assert.deepEqual(numbers.map((s) => s.visualType), ["still-animated", "motion", "motion"], "the hook alone meets a third");
+});
+
 test("a template the planner gets wrong is rejected by the schema, not drawn", async () => {
-  const llm = scriptedLLM([[/choosing a template/, { animSpec: { kind: "steps", title: null, cycle: false, steps: [{ label: "only one", sub: null, icon: "sun", cue: "sun" }] } }]]);
+  const llm = scriptedLLM([[/choosing a template/, { animSpec: { kind: "steps", title: null, cycle: false, steps: [{ label: "only one", sub: null, icon: "sun", cue: "sun" }] }, hedraPrompt: "Flat vector illustration, detailed. The sun. No text, no labels." }]]);
   await assert.rejects(planScene(ctxWith(llm), briefFor(120), motionScene), /too_small|at least 2/i);
-  const bad = scriptedLLM([[/choosing a template/, { animSpec: { kind: "count", value: 71, unit: "%", label: "of the surface", cue: "Seventy", outOf: 100, comparison: { text: "two oceans", icon: "octopus", cue: "two" } } }]]);
+  const bad = scriptedLLM([[/choosing a template/, { animSpec: { kind: "count", value: 71, unit: "%", label: "of the surface", cue: "Seventy", outOf: 100, comparison: { text: "two oceans", icon: "octopus", cue: "two" } }, hedraPrompt: "Flat vector illustration, detailed. The sea. No text, no labels." }]]);
   await assert.rejects(planScene(ctxWith(bad), briefFor(120), motionScene), /octopus|invalid_enum/i);
 });
 

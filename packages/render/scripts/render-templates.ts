@@ -34,6 +34,14 @@ export const scenes: ExplainerProps["scenes"] = [
     kind: "steps", title: "How rain happens", cycle: false,
     steps: [{ label: "Sun warms ground", sub: null, icon: "sun", cue: "sun" }, { label: "Warm air rises", sub: null, icon: "cloud", cue: "rises" }, { label: "Cools, condenses", sub: "into cloud", icon: "drop", cue: "cools" }, { label: "Rain falls", sub: null, icon: "wave", cue: "rain" }],
   }),
+  scene("steps5", "motion", "Papal authority over England. Catherine of Aragon, his brother's widow. Papal permission to marry her. A legitimate son to secure the dynasty. A fragile succession.", 14, {
+    kind: "steps", title: "What Henry needed", cycle: false,
+    steps: [{ label: "Papal authority", sub: "England's Catholic", icon: "house", cue: "Papal" }, { label: "Catherine of Aragon", sub: "1509 · Arthur's widow", icon: "person", cue: "Catherine" }, { label: "Papal permission", sub: null, icon: "check", cue: "permission" }, { label: "Legitimate son", sub: "Secure the Tudor dynasty", icon: "people", cue: "son" }, { label: "Fragile succession", sub: "Uncertainty over the heir", icon: "question", cue: "fragile" }],
+  }),
+  scene("timeline", "motion", "Catherine of Aragon in 1509. Anne Boleyn in 1533. Jane Seymour in 1536. Anne of Cleves in 1540. Catherine Howard the same year. Catherine Parr in 1543.", 16, {
+    kind: "steps", title: "Six wives", cycle: false,
+    steps: [{ label: "Catherine of Aragon", sub: "1509 · divorced", icon: "person", cue: "Aragon" }, { label: "Anne Boleyn", sub: "1533 · beheaded", icon: "person", cue: "Boleyn" }, { label: "Jane Seymour", sub: "1536 · died", icon: "person", cue: "Seymour" }, { label: "Anne of Cleves", sub: "1540 · divorced", icon: "person", cue: "Cleves" }, { label: "Catherine Howard", sub: "1540 · beheaded", icon: "person", cue: "Howard" }, { label: "Catherine Parr", sub: "1543 · survived", icon: "person", cue: "Parr" }],
+  }, [{ asset: { url: still, contentType: "image/svg+xml", durationMs: null }, role: "still" }]),
   scene("cycle", "motion", "Water evaporates from the sea, condenses into cloud, falls as rain, and runs back to the sea. Round and round.", 12, {
     kind: "steps", title: "The water cycle", cycle: true,
     steps: [{ label: "Evaporates", sub: null, icon: "sun", cue: "evaporates" }, { label: "Condenses", sub: null, icon: "cloud", cue: "condenses" }, { label: "Falls as rain", sub: null, icon: "drop", cue: "rain" }, { label: "Runs to sea", sub: null, icon: "wave", cue: "runs" }],
@@ -42,11 +50,11 @@ export const scenes: ExplainerProps["scenes"] = [
     kind: "compare", title: "Top speed",
     items: [{ label: "Cheetah", icon: "bolt", value: 120, unit: "km/h", note: "for a few seconds", cue: "cheetah" }, { label: "Greyhound", icon: "person", value: 70, unit: "km/h", note: null, cue: "greyhound" }, { label: "You", icon: "person", value: 30, unit: "km/h", note: "on a good day", cue: "You" }],
     verdict: "Four times faster than you", verdictCue: "wins",
-  }),
+  }, [{ asset: { url: still, contentType: "image/svg+xml", durationMs: null }, role: "still" }]),
   scene("count", "motion", "Seventy one percent of Earth's surface is water. That is more than two Atlantic oceans for every patch of land.", 10, {
     kind: "count", value: 71, unit: "%", label: "of Earth's surface is water", cue: "Seventy", outOf: 100,
     comparison: { text: "More than two Atlantics for every patch of land", icon: "earth", cue: "two" },
-  }),
+  }, [{ asset: { url: still, contentType: "image/svg+xml", durationMs: null }, role: "still" }]),
   scene("count2", "motion", "Light takes eight minutes to reach us from the Sun. Look up and you see the Sun as it was eight minutes ago.", 9, {
     kind: "count", value: 8, unit: "minutes", label: "for sunlight to reach Earth", cue: "eight", outOf: null,
     comparison: { text: "You see the Sun as it was eight minutes ago", icon: "sun", cue: "ago" },
@@ -84,7 +92,7 @@ async function main() {
     const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps: props, browserExecutable });
     let offset = 0;
     for (const s of scenes) {
-      if (background === "dark" && !["steps", "compare", "split", "reveal"].includes(s.id)) { offset += sceneFrames(s.durationS); continue; }
+      if (background === "dark" && !["timeline", "compare", "split", "reveal"].includes(s.id)) { offset += sceneFrames(s.durationS); continue; }
       for (const k of [0.3, 0.6, 0.95]) {
         const frame = offset + Math.round(s.durationS * k * FPS);
         const output = join(out, `${s.id}-${background}-${Math.round(k * 100)}.png`);

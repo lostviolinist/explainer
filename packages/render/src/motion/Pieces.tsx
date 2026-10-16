@@ -1,4 +1,4 @@
-import { AbsoluteFill, Audio, Sequence, useCurrentFrame } from "remotion";
+import { AbsoluteFill, Audio, Img, Sequence, useCurrentFrame } from "remotion";
 import { FPS, SFX_VOLUME } from "../props.js";
 import { iconPath } from "./icons.js";
 import { ease } from "./timing.js";
@@ -49,15 +49,49 @@ export function enter(t: number, at: number, over = 0.45, from: "pop" | "left" |
 export function Breathe({ durationS, children }: { durationS: number; children: React.ReactNode }) {
   const t = useT();
   const x = Math.min(1, t / Math.max(1, durationS));
-  const s = 1 + 0.03 * x;
-  return <AbsoluteFill style={{ transform: `scale(${s})`, transformOrigin: "50% 42%" }}>{children}</AbsoluteFill>;
+  const s = 1 + 0.035 * x;
+  return <AbsoluteFill style={{ transform: `scale(${s}) translateX(${-6 * x}px)`, transformOrigin: "50% 45%" }}>{children}</AbsoluteFill>;
 }
 
-/** The scene's title, top-left, in from below. */
-export function Title({ text, theme, t, at = 0.35 }: { text: string | null; theme: Theme; t: number; at?: number }) {
+/**
+ * Where a template lays its content out: the whole frame, or the part beside
+ * the picture panel. The bottom-right stays clear for the captions either way.
+ */
+export type Area = { x: number; w: number; picture: boolean };
+export const FULL: Area = { x: 96, w: 1728, picture: false };
+export const BESIDE: Area = { x: 860, w: 964, picture: true };
+export const PANEL = { x: 120, y: 150, w: 640, h: 780 } as const;
+
+/** A soft accent blob in the background, so the frame has depth before anything arrives. */
+export function Backdrop({ theme, area }: { theme: Theme; area: Area }) {
+  const t = useT();
+  const c = theme.accents[1]!;
+  const cx = area.picture ? PANEL.x + PANEL.w * 0.55 : 1560;
+  const cy = area.picture ? PANEL.y + PANEL.h * 0.45 : 170;
+  const r = area.picture ? 470 : 520;
+  const e = ease(t, 0, 1.2);
+  return (
+    <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+      <circle cx={cx} cy={cy} r={r * (0.8 + 0.2 * e)} fill={c} opacity={0.14 * e} />
+    </svg>
+  );
+}
+
+/** The scene's illustration beside the template, in a rounded panel that slowly pushes in. */
+export function Picture({ src, t, durationS }: { src: string; t: number; durationS: number }) {
+  const z = 1.02 + 0.08 * Math.min(1, t / Math.max(1, durationS));
+  return (
+    <div style={{ position: "absolute", left: PANEL.x, top: PANEL.y, width: PANEL.w, height: PANEL.h, borderRadius: 40, overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.18)", ...enter(t, 0.25, 0.6, "left") }}>
+      <Img src={src} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${z})`, transformOrigin: "50% 40%" }} />
+    </div>
+  );
+}
+
+/** The scene's title, top-left of its area, in from below. */
+export function Title({ text, theme, t, area = FULL, at = 0.35 }: { text: string | null; theme: Theme; t: number; area?: Area; at?: number }) {
   if (!text) return null;
   return (
-    <div style={{ position: "absolute", left: 96, top: 84, fontFamily: theme.font, fontSize: 46, fontWeight: 600, letterSpacing: -0.5, color: theme.ink, ...enter(t, at, 0.5, "up") }}>
+    <div style={{ position: "absolute", left: area.x, top: 78, maxWidth: area.w, fontFamily: theme.font, fontSize: 50, fontWeight: 600, letterSpacing: -0.5, lineHeight: 1.1, color: theme.ink, ...enter(t, at, 0.5, "up") }}>
       {text}
     </div>
   );
@@ -76,7 +110,7 @@ export function Pill({ text, color, ink, size = 36, style }: { text: string; col
 export const pillWidth = (text: string, size = 36) => text.length * size * 0.56 + size * 1.44;
 
 /** A stroked path that draws itself on: progress 0–1. */
-export function DrawPath({ d, stroke, width, progress, dash }: { d: string; stroke: string; width: number; progress: number; dash?: boolean }) {
+export function DrawPath({ d, stroke, width, progress }: { d: string; stroke: string; width: number; progress: number }) {
   if (progress <= 0) return null;
-  return <path d={d} fill="none" stroke={stroke} strokeWidth={width} strokeLinecap="round" pathLength={1} strokeDasharray={dash ? "0.04 0.03" : 1} strokeDashoffset={dash ? 0 : 1 - progress} style={dash ? { clipPath: `inset(0 ${(1 - progress) * 100}% 0 0)` } : undefined} />;
+  return <path d={d} fill="none" stroke={stroke} strokeWidth={width} strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1 - progress} />;
 }

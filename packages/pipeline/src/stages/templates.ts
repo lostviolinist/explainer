@@ -14,10 +14,10 @@ export const MOTION_PLAN_RULES = `You plan one scene of a flat-illustration expl
 - compare: two or three things side by side. Give each a value and unit when the narration compares quantities (the bars then show the difference); otherwise a short note. A verdict line (at most 7 words) lands at the end on its cue, or null.
 - count: one number that matters: value, unit (%, km, times, years…), and a label (at most 6 words) saying what it is. outOf when it is a share of something (71 out of 100, 1 out of 8), else null. A comparison (at most 9 words, with an icon) that makes the number mean something, or null.
 - split: two sides, left and right: a myth and the fact, before and after, what people think and what happens. Each side has a heading (at most 2 words, like Myth and Fact), a line (at most 12 words) and an optional icon. winner is the side that is true (neither for before/after).
-- points: a few key points (at most 8 words each), each with an optional icon; for recaps and "three things to know".
 Icons, by name only: ${ICONS}.
 ${CUES}
-One template, one idea: what the narration spends its words on.`;
+One template, one idea: what the narration spends its words on.
+hedraPrompt: the illustration shown beside the template, of the scene's subject (the thing the narration is about, drawn as a real thing: a person, a place, an object, a creature; never a diagram, chart or icons). Start with "Flat vector illustration, detailed." Describe one subject, large, centred, with two supporting details, in a portrait composition. End with "No text, no labels."`;
 
 export const CHART_PLAN_RULES = `You turn one scene of an explainer into a bar chart. series: 2–5 bars from the numbers the narration states, in the same unit, labels of at most 3 words, each with the narration word it appears on. title: at most 6 words, or null. unit: short (%, km, ×), or null. claimId: the claim the numbers come from. ${CUES}`;
 

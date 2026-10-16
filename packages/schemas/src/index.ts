@@ -170,7 +170,7 @@ export const StepsSpec = z.object({
   kind: z.literal("steps"),
   title: Short(40).nullable(),
   cycle: z.boolean(),
-  steps: z.array(z.object({ label: Short(24), sub: Short(24).nullable(), icon: IconName, cue: Cue })).min(2).max(5),
+  steps: z.array(z.object({ label: Short(24), sub: Short(24).nullable(), icon: IconName, cue: Cue })).min(2).max(6),
 });
 /** Two or three things side by side, with a quantity each when the point is a quantity. */
 export const CompareSpec = z.object({
@@ -220,8 +220,8 @@ export const RevealSpec = z.object({
 
 export const AnimSpec = z.discriminatedUnion("kind", [NoneSpec, StepsSpec, CompareSpec, CountSpec, SplitSpec, PointsSpec, ChartSpec, RevealSpec]);
 export type AnimSpec = z.infer<typeof AnimSpec>;
-/** The templates a motion-graphics scene can be: what the planner chooses from. */
-export const MotionSpec = z.discriminatedUnion("kind", [StepsSpec, CompareSpec, CountSpec, SplitSpec, PointsSpec]);
+/** The templates a motion-graphics scene can be: what the planner chooses from (key points belong to text scenes). */
+export const MotionSpec = z.discriminatedUnion("kind", [StepsSpec, CompareSpec, CountSpec, SplitSpec]);
 export type MotionSpec = z.infer<typeof MotionSpec>;
 
 export const RenderSpec = z.object({

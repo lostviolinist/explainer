@@ -28,7 +28,7 @@ import { MANIM_RULES, threeRules, narrationTimeline, stripFences, fallbackManim 
 import { CHART_PLAN_RULES, DIAGRAM_CALLOUT_RULES, MOTION_PLAN_RULES, POINTS_PLAN_RULES, pictureRules } from "./templates.js";
 
 /** What the planner returns, by scene type: a template filled in, a picture prompt, or both. */
-export const MotionPlan = z.object({ animSpec: MotionSpec });
+export const MotionPlan = z.object({ animSpec: MotionSpec, hedraPrompt: z.string() });
 export const ChartPlan = z.object({ animSpec: ChartSpec });
 export const PointsPlan = z.object({ animSpec: PointsSpec });
 export const PicturePlan = z.object({ hedraPrompt: z.string() });
@@ -111,8 +111,9 @@ export async function planScene(ctx: Ctx, brief: Brief, scene: Scene, cast: Cast
 
   switch (scene.visualType) {
     case "motion": {
-      const { animSpec } = await ctx.llm.json({ system: MOTION_PLAN_RULES, user: about, schema: MotionPlan, maxTokens: 1500, effort: "low" });
-      return spec(null, animSpec);
+      // The template, and the illustration of the subject it sits beside (a split fills the frame on its own).
+      const { animSpec, hedraPrompt } = await ctx.llm.json({ system: MOTION_PLAN_RULES, user: withCast, schema: MotionPlan, maxTokens: 1800, effort: "low" });
+      return spec(animSpec.kind === "split" ? null : hedraPrompt, animSpec, "still");
     }
     case "chart": {
       const { animSpec } = await ctx.llm.json({ system: CHART_PLAN_RULES, user: about, schema: ChartPlan, maxTokens: 900, effort: "low" });
@@ -248,10 +249,20 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
     return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, qa });
   }
 
-  // Template scenes are drawn by the composition from the plan's spec: nothing to generate, nothing to check.
+  // Template scenes are drawn by the composition from the plan's spec; a motion scene also gets an
+  // illustration of its subject to sit beside (if the picture fails, the template fills the frame).
   if (scene.visualType === "motion" || scene.visualType === "chart" || scene.visualType === "text") {
     const kind = scene.render?.animSpec.kind ?? "none";
     qa.push({ check: "visual-matches-direction", passed: kind !== "none", score: null, attempts: 0, fallback: kind === "none" ? "no template planned; the scene shows its captions only" : null, notes: `template: ${kind}` });
+    if (scene.visualType === "motion" && scene.render?.hedraPrompt) {
+      const { still, bestRejected } = await drawStill(ctx, brief, scene, scene.render.hedraPrompt, refs, "still:0", qa);
+      const picture = still ?? bestRejected?.asset ?? null;
+      if (picture) {
+        visuals.push({ asset: picture, role: "still" });
+        if (!still) qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 2, fallback: "kept the best rejected still", notes: null });
+        await progress(`drew scene ${scene.id.slice(1)}`, 0.6, { sceneId: scene.id, stillUrl: picture.url });
+      }
+    }
     await progress(`built scene ${scene.id.slice(1)} (${kind})`, 0.9, { sceneId: scene.id });
     return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, qa });
   }
@@ -260,33 +271,9 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
     const prompt = scene.render?.hedraPrompt ?? `Flat vector illustration, detailed. ${scene.visualDirection}. No text, no labels. Leave the bottom-right quarter clear.`;
 
     // 1. Storyboard still (also the start frame for animated stills, and the vision target).
-    let still: MirroredAsset | null = null;
-    let stillScore: z.infer<typeof VisionScore> | null = null;
-    // Best rejected still, so a scene never ends up blank: no baked-in text beats a higher score.
-    let bestRejected: { asset: MirroredAsset; rank: number } | null = null;
-    const stillModels = ctx.style.models.still ?? ["gpt-image-2"];
-    for (let attempt = 1; attempt <= 2 && !still; attempt++) {
-      await progress(`drawing scene ${scene.id.slice(1)}`, 0.3, undefined);
-      const out = await attemptGeneration(qa, "visual-matches-direction", attempt, () =>
-        generateStill(ctx.hedra, scope(`still:${demotions}:${attempt}`), attempt === 1 ? stillModels : stillModels.slice(1).length ? stillModels.slice(1) : stillModels, {
-          prompt: attempt === 1 ? prompt : `${prompt} Match the reference image's style exactly.`,
-          references: refs,
-        }),
-      );
-      if (!out) continue;
-      const m = await mirrorOutcome(ctx, brief.projectId, out);
-      await ctx.store.recordCost(brief.projectId, "still", out.costUsd, scene.id);
-      const score = await scoreFrames(ctx, scene, [m.url]);
-      const ok = score.matchesDirection >= PASS && score.styleMatch >= PASS && !score.hasText;
-      qa.push({ check: "visual-matches-direction", passed: ok, score: Math.min(score.matchesDirection, score.styleMatch), attempts: attempt, fallback: null, notes: score.notes });
-      if (ok) {
-        still = m;
-        stillScore = score;
-      } else {
-        const rank = Math.min(score.matchesDirection, score.styleMatch) - (score.hasText ? 1 : 0);
-        if (!bestRejected || rank > bestRejected.rank) bestRejected = { asset: m, rank };
-      }
-    }
+    const drawn = await drawStill(ctx, brief, scene, prompt, refs, `still:${demotions}`, qa);
+    let still: MirroredAsset | null = drawn.still;
+    const bestRejected = drawn.bestRejected;
     if (!still && bestRejected && !DEMOTE[scene.visualType]) {
       // Last rung of the ladder: show the best attempt rather than an empty scene.
       still = bestRejected.asset;
@@ -355,6 +342,40 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
   }
 
   return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, animSpec, qa });
+}
+
+/**
+ * A still from Hedra, checked by looking at it: two attempts (the second on
+ * the next model, told to match the reference), and the least-bad rejected
+ * one kept aside so a scene never has to go blank.
+ */
+async function drawStill(ctx: Ctx, brief: Brief, scene: Scene, prompt: string, refs: string[], key: string, qa: QaResult[]): Promise<{ still: MirroredAsset | null; bestRejected: { asset: MirroredAsset; rank: number } | null }> {
+  const progress = makeProgress(ctx, brief.projectId, "visuals");
+  const scope = (k: string) => `${brief.projectId}:${scene.id}:${k}`;
+  let still: MirroredAsset | null = null;
+  let bestRejected: { asset: MirroredAsset; rank: number } | null = null;
+  const stillModels = ctx.style.models.still ?? ["gpt-image-2"];
+  for (let attempt = 1; attempt <= 2 && !still; attempt++) {
+    await progress(`drawing scene ${scene.id.slice(1)}`, 0.3, undefined);
+    const out = await attemptGeneration(qa, "visual-matches-direction", attempt, () =>
+      generateStill(ctx.hedra, scope(`${key}:${attempt}`), attempt === 1 ? stillModels : stillModels.slice(1).length ? stillModels.slice(1) : stillModels, {
+        prompt: attempt === 1 ? prompt : `${prompt} Match the reference image's style exactly.`,
+        references: refs,
+      }),
+    );
+    if (!out) continue;
+    const m = await mirrorOutcome(ctx, brief.projectId, out);
+    await ctx.store.recordCost(brief.projectId, "still", out.costUsd, scene.id);
+    const score = await scoreFrames(ctx, scene, [m.url]);
+    const ok = score.matchesDirection >= PASS && score.styleMatch >= PASS && !score.hasText;
+    qa.push({ check: "visual-matches-direction", passed: ok, score: Math.min(score.matchesDirection, score.styleMatch), attempts: attempt, fallback: null, notes: score.notes });
+    if (ok) still = m;
+    else {
+      const rank = Math.min(score.matchesDirection, score.styleMatch) - (score.hasText ? 1 : 0);
+      if (!bestRejected || rank > bestRejected.rank) bestRejected = { asset: m, rank };
+    }
+  }
+  return { still, bestRejected };
 }
 
 /**

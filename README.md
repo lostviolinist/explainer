@@ -65,10 +65,12 @@ If either fails, the script is rewritten. If it fails twice, the arc is simplifi
 
 Each scene is one idea with one picture. The script says what's seen in the way a director would — naming the metaphor and what moves, in what order, on which words — and picks a type of picture for it:
 
-- **Motion graphics** for how things work. These are not drawn freehand by a model: they are a handful of templates a person designed once, in the house style, and the model only fills them in. Steps in order (or a cycle), two or three things compared, one number that matters, a myth against the fact, a few key points. Each thing on screen lands on the word that names it.
+- **Motion graphics** for how things work. These are not drawn freehand by a model: they are a handful of templates a person designed once, in the house style, and the model only fills them in. Steps in order (or a cycle), two or three things compared, one number that matters, a myth against the fact. Each sits beside an illustration of the scene's subject, and each thing on screen lands on the word that names it.
 - **An illustration** for what something looks like — anatomy, a machine, a place — generated in the house style. Its parts are then found in the picture by looking at it, and a label points at each one as it's mentioned.
 - **A short generated clip** for establishing shots and demonstrations.
-- **A chart** when the point is a number, and **key points** for a recap.
+- **A chart** when the point is a number, and **key points** for the recap.
+
+A video must look illustrated: the hook is always a picture, at least a third of the scenes are pictures, and key points appear once, at the end. The script is told so, and the plan is corrected if it forgets.
 
 The rule that matters most, learned from watching bad output: **a model is good at deciding what to say and bad at drawing it.** Earlier versions asked the model to write the animation code itself, and the results were abstract shapes standing in for ideas: a blob labelled "river", boxes with arrows for "language". So the drawing is fixed and the model's job is reduced to words, icons, numbers and timing, which it does well. The templates can't produce clutter, text that spills out of its box, or a diagram where a picture was wanted, because none of those is a choice they offer.
 

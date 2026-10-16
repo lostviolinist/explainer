@@ -155,8 +155,9 @@ function answer(system: string, user: string): unknown {
     return { hedraPrompt: prompt };
   }
   if (/choosing a template/.test(system)) {
-    if (user.includes(MOTION_NARRATION)) return { animSpec: { kind: "compare", title: "Where blue light goes", items: [{ label: "Blue", icon: "sun", value: 5, unit: "×", note: null, cue: "blue" }, { label: "Red", icon: "fire", value: 1, unit: "×", note: "mostly straight on", cue: "look" }], verdict: "Blue arrives from everywhere", verdictCue: "arrives" } };
-    return { animSpec: { kind: "steps", title: "What air is made of", cycle: false, steps: [{ label: "Air", sub: null, icon: "cloud", cue: "Air" }, { label: "Tiny molecules", sub: "nitrogen, oxygen", icon: "molecule", cue: "molecules" }, { label: "Smaller than light", sub: null, icon: "wave", cue: "smaller" }] } };
+    const hedraPrompt = "Flat vector illustration, detailed. A sunbeam over tiny air molecules, portrait composition. No text, no labels.";
+    if (user.includes(MOTION_NARRATION)) return { hedraPrompt, animSpec: { kind: "compare", title: "Where blue light goes", items: [{ label: "Blue", icon: "sun", value: 5, unit: "×", note: null, cue: "blue" }, { label: "Red", icon: "fire", value: 1, unit: "×", note: "mostly straight on", cue: "look" }], verdict: "Blue arrives from everywhere", verdictCue: "arrives" } };
+    return { hedraPrompt, animSpec: { kind: "steps", title: "What air is made of", cycle: false, steps: [{ label: "Air", sub: null, icon: "cloud", cue: "Air" }, { label: "Tiny molecules", sub: "nitrogen, oxygen", icon: "molecule", cue: "molecules" }, { label: "Smaller than light", sub: null, icon: "wave", cue: "smaller" }] } };
   }
   if (/bar chart/.test(system)) return { animSpec: { kind: "chart", title: "How much each colour scatters", unit: "×", series: [{ label: "Blue", value: 5, cue: "Blue" }, { label: "Red", value: 1, cue: "red" }], claimId: "c1" } };
   if (/key points/.test(system)) return { animSpec: { kind: "points", title: null, points: [{ text: "Short waves scatter most", icon: "wave", cue: "explain" }, { text: "Blue reaches you from everywhere", icon: null, cue: "sky" }] } };
@@ -504,10 +505,12 @@ async function main() {
       if (w.length !== s.narration.split(/\s+/).filter(Boolean).length) f(`${s.id}: ${w.length} word timestamps for ${s.narration.split(/\s+/).length} words`);
       // Code scenes must have their render.
       if (["manim", "three"].includes(s.visualType) && !a.visuals.some((v: any) => v.role === "animation")) f(`${s.id} (${s.visualType}) has no animation`);
-      // Template scenes are data for the composition: a spec in the plan, nothing generated.
+      // Template scenes are data for the composition: a spec in the plan; a motion scene also has its subject picture.
       if (["motion", "chart", "text"].includes(s.visualType)) {
         if (!["steps", "compare", "count", "split", "points", "chart"].includes(s.render?.animSpec?.kind)) f(`${s.id} (${s.visualType}) has no template: ${JSON.stringify(s.render?.animSpec)}`);
-        if (a.visuals.length) f(`${s.id} (${s.visualType}) generated visuals it doesn't use`);
+        const roles = a.visuals.map((v: any) => v.role);
+        if (s.visualType === "motion" && s.render?.animSpec?.kind !== "split" && !roles.includes("still")) f(`${s.id} (motion) has no subject picture beside its template`);
+        if (s.visualType !== "motion" && roles.length) f(`${s.id} (${s.visualType}) generated visuals it doesn't use`);
       }
       // A diagram's callouts are located on its still: at least one placed, the unfound one left for the column.
       if (s.visualType === "diagram") {
