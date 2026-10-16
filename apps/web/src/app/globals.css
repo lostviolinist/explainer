@@ -222,3 +222,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none !importan
   .ask { flex-direction: column; }
   .ask button { width: 100%; }
 }
+
+.setup-problems.stuck { margin-top: 14px; }
+.setup-problems.stuck code { font-size: 13px; }

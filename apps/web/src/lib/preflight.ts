@@ -16,6 +16,30 @@ export type Check = { name: string; status: "ok" | "warn" | "fail"; detail: stri
 /** Check names the home page reads to offer the 3Blue1Brown style. */
 export const MANIM_CHECK = "3Blue1Brown animator";
 export const THREE_CHECK = "3D animator";
+export const WORKER_CHECK = "Background worker";
+
+/**
+ * The Inngest dev server runs the pipeline. Without it, or without this app
+ * synced into it, a run is accepted and then sits at "starting" forever: the
+ * one failure the progress page can't explain on its own.
+ */
+async function worker(): Promise<string | { warn: string }> {
+  const dev = process.env.INNGEST_DEV || process.env.INNGEST_BASE_URL;
+  if (!dev) return { warn: "no INNGEST_DEV set: runs go to Inngest Cloud (not checked here)" };
+  const base = dev.replace(/\/$/, "");
+  let res: Response;
+  try {
+    res = await fetch(`${base}/dev`, { signal: AbortSignal.timeout(5000), cache: "no-store" });
+  } catch (e) {
+    throw new Error(`can't reach the Inngest dev server at ${base}: ${(e as Error).message}`);
+  }
+  if (!res.ok) throw new Error(`the Inngest dev server at ${base} answered ${res.status}`);
+  const info = (await res.json()) as { functions?: unknown[]; handlers?: unknown[] };
+  const functions = info.functions ?? [];
+  const ours = functions.filter((f) => /make-video/.test(JSON.stringify(f)));
+  if (!ours.length) throw new Error(`the Inngest dev server at ${base} is up but hasn't synced this app (${functions.length} function(s) registered), so runs never start`);
+  return `Inngest dev server at ${base}, ${ours.length} pipeline function(s) synced`;
+}
 
 /** An animation sandbox is optional: missing or down is a warning, and the styles that need it are held. Illustrated videos need neither. */
 async function sandbox(envVar: string, without: string): Promise<string | { warn: string }> {
@@ -123,6 +147,7 @@ export async function runPreflight(): Promise<Check[]> {
       return "browser ready";
     }),
 
+    run(WORKER_CHECK, "Start the `inngest` service: docker compose up. If it is up but hasn't found the app: docker compose restart inngest, then `docker compose logs inngest web` if runs still don't start.", worker),
     run(MANIM_CHECK, "Start the `manim` service: docker compose up --build, then `docker compose logs manim` if it keeps failing.", () => sandbox("MANIM_URL", "the 3Blue1Brown style is off (Illustrated videos don't need it)")),
     run(THREE_CHECK, "Start the `three` service: docker compose up --build.", () => sandbox("THREE_URL", "no 3D scenes in the 3Blue1Brown style; nothing else uses it")),
   ]);

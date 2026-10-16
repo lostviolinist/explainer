@@ -169,6 +169,8 @@ export function Progress({ projectId, question, initial, initialLive }: { projec
   }, [pct, failed, question]);
 
   const stageIdx = STAGES.findIndex((s) => s.key === stage);
+  // Accepted but never picked up: the background worker isn't running or hasn't synced this app.
+  const stuck = !failed && now > 0 && (!last || last.stage === "queued") && now - startedAt > 75_000;
 
   return (
     <div className="studio">
@@ -186,6 +188,14 @@ export function Progress({ projectId, question, initial, initialLive }: { projec
           <span className={failed ? "msg error" : "msg"}>{failed ? last?.message : sentence(last?.message ?? "starting")}</span>
           <span className="eta">{eta}</span>
         </div>
+        {stuck && (
+          <div className="setup-problems stuck">
+            <strong>Nothing has picked this up yet</strong>
+            <div className="small">
+              The background worker (Inngest) isn't running, or hasn't found the app. Check the <a href="/?setup">setup page</a> and <a href="http://localhost:8288" target="_blank" rel="noreferrer">localhost:8288</a>, or run <code>docker compose logs inngest web</code>. The run will continue on its own once the worker is back.
+            </div>
+          </div>
+        )}
         {failed && (
           <form action={ask} className="retry">
             <input type="hidden" name="question" value={question} />
