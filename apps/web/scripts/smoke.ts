@@ -470,7 +470,8 @@ async function main() {
     const probed = Number((await ffmpeg()("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video])).trim());
     if (Math.abs(probed - result.durationS) > 0.5) f(`video is ${probed}s, expected ${result.durationS}s`);
 
-    const rows = await db.select().from(schema.artifacts).where(eq(schema.artifacts.projectId, projectId));
+    // In the order they were written: the plan is saved twice (before and after the render specs), and the latest counts.
+    const rows = (await db.select().from(schema.artifacts).where(eq(schema.artifacts.projectId, projectId))).sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
     const plan = rows.filter((a) => a.kind === "plan").at(-1)!.data as any;
     const render = rows.filter((a) => a.kind === "render").at(-1)?.data as any;
     const sound = render?.qa?.find((q: any) => q.check === "sound");
