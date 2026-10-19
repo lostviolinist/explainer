@@ -1,5 +1,5 @@
-# HTTPS for the site, with videos and pictures served from the S3 server on
-# the same origin (/s3/…), so share links and the player need no CORS.
+# HTTPS for the site. The site serves its own pictures and videos at /s3/…,
+# so this is a plain reverse proxy.
 {$DOMAIN} {
 	encode gzip
 
@@ -9,11 +9,5 @@
 	# 	friend $2a$14$...
 	# }
 
-	handle_path /s3/* {
-		reverse_proxy web:9000
-	}
-
-	handle {
-		reverse_proxy web:3000
-	}
+	reverse_proxy web:3000
 }

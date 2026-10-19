@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { RenderResult, ScenePlan, ResearchBrief } from "@explainer/schemas";
 import { db, schema } from "@/lib/db";
 import { latest } from "@/lib/store";
+import { toPublic } from "@/lib/public-urls";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export default async function SharePage({ params }: { params: Promise<{ slug: st
   return (
     <main>
       <h1 className="question">{project.question}</h1>
-      <video className="player" src={render.videoUrl} controls playsInline preload="metadata" />
+      <video className="player" src={toPublic(render.videoUrl)} controls playsInline preload="metadata" />
       {research && (
         <section className="sources">
           <h2>Sources</h2>

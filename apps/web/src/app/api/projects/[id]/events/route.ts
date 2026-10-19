@@ -4,6 +4,7 @@
  */
 import { and, asc, eq, gt } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { toPublic } from "@/lib/public-urls";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           .where(and(eq(schema.progressEvents.projectId, id), gt(schema.progressEvents.at, since)))
           .orderBy(asc(schema.progressEvents.at));
         for (const e of events) {
-          send({ stage: e.stage, message: e.message, fraction: e.fraction, preview: e.preview, at: e.at.toISOString() });
+          send({ stage: e.stage, message: e.message, fraction: e.fraction, preview: toPublic(e.preview), at: e.at.toISOString() });
           since = e.at;
           if (e.stage === "done" || e.stage === "failed") {
             closed = true;

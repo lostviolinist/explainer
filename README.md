@@ -26,7 +26,7 @@ Good to know:
 
 Keys and credits are the only things that can stop a run. The app checks them quietly before it starts one.
 
-To put it on a server for other people: [deploy/README.md](deploy/README.md) (one machine, HTTPS, about fifteen minutes).
+To share it beyond your laptop: [deploy/README.md](deploy/README.md). The free way is a tunnel from your laptop (two commands); the always-on way is one server with HTTPS (about fifteen minutes).
 
 ## The philosophy
 
