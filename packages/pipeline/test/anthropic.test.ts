@@ -1,8 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
-import { AnthropicLLM } from "../src/providers/anthropic.ts";
+import { AnthropicLLM, claudeSchema } from "../src/providers/anthropic.ts";
 import { llmProvider, llmModelName } from "../src/context.ts";
+import { zodTextFormat } from "openai/helpers/zod";
+import * as assemble from "../src/stages/assemble.ts";
+import * as intake from "../src/stages/intake.ts";
+import * as research from "../src/stages/research.ts";
+import * as script from "../src/stages/script.ts";
+import * as visuals from "../src/stages/visuals.ts";
 
 /** A fake client that records requests and answers from a queue. */
 function fakeClient(answers: (unknown | Error)[]) {
@@ -76,4 +82,50 @@ test("the provider follows the keys: Claude when an Anthropic key is set, unless
   // A gpt-* name left in .env from an OpenAI setup must not be sent to Anthropic.
   assert.equal(llmModelName({ ANTHROPIC_API_KEY: "k", LLM_MODEL: "gpt-6.1-sol" }), "claude-opus-5-5");
   assert.equal(llmModelName({ ANTHROPIC_API_KEY: "k", LLM_MODEL: "claude-sonnet-5-5" }), "claude-sonnet-5-5");
+});
+
+test("every schema the pipeline sends fits Claude's structured outputs after the transform", () => {
+  const all: Record<string, z.ZodTypeAny> = {
+    Watchability: assemble.Watchability, FactCheck: assemble.FactCheck, Inferred: intake.Inferred,
+    Queries: research.Queries, Extracted: research.Extracted, Merged: research.Merged,
+    Arc: script.Arc, Scenes: script.Scenes, LearnerPass: script.LearnerPass, ExpertPass: script.ExpertPass,
+    MotionPlan: visuals.MotionPlan, ChartPlan: visuals.ChartPlan, PointsPlan: visuals.PointsPlan, PicturePlan: visuals.PicturePlan,
+    DiagramPlan: visuals.DiagramPlan, VisionScore: visuals.VisionScore, SceneCode: visuals.SceneCode, Located: visuals.Located, Delivery: visuals.Delivery,
+  };
+  // Keywords the API answers with a 400 (platform.claude.com/docs/en/build-with-claude/structured-outputs), and its per-request limits.
+  const REFUSED = ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "maxItems", "uniqueItems", "oneOf", "$schema"];
+  const FORMATS = new Set(["date-time", "time", "date", "duration", "email", "hostname", "uri", "ipv4", "ipv6", "uuid"]);
+  const walk = (node: any, path: string, out: { bad: string[]; unions: number; optional: number }) => {
+    if (Array.isArray(node)) return node.forEach((n, i) => walk(n, `${path}[${i}]`, out));
+    if (!node || typeof node !== "object") return;
+    for (const k of REFUSED) if (k in node) out.bad.push(`${path}: ${k}`);
+    if (node.minItems > 1) out.bad.push(`${path}: minItems=${node.minItems}`);
+    if ("format" in node && !FORMATS.has(node.format)) out.bad.push(`${path}: format=${node.format}`);
+    if (node.type === "object" && node.additionalProperties !== false) out.bad.push(`${path}: additionalProperties`);
+    if (typeof node.$ref === "string" && !node.$ref.startsWith("#")) out.bad.push(`${path}: external $ref`);
+    if (node.type === "object" && node.properties) {
+      const required = new Set<string>(node.required ?? []);
+      for (const [name, prop] of Object.entries<any>(node.properties)) {
+        if (!required.has(name)) out.optional++;
+        if (Array.isArray(prop?.type) || Array.isArray(prop?.anyOf)) out.unions++;
+      }
+    }
+    for (const k of ["properties", "$defs", "definitions"]) if (node[k]) for (const v of Object.values(node[k])) walk(v, `${path}.${k}`, out);
+    for (const k of ["items", "anyOf", "allOf"]) if (k in node) walk(node[k], `${path}.${k}`, out);
+  };
+  for (const [name, schema] of Object.entries(all)) {
+    const original = zodTextFormat(schema, "answer").schema as Record<string, unknown>;
+    const before = JSON.stringify(original);
+    const out = { bad: [] as string[], unions: 0, optional: 0 };
+    walk(claudeSchema(original), name, out);
+    assert.deepEqual(out.bad, [], `${name} still carries keywords Claude refuses`);
+    assert.ok(out.unions <= 16, `${name} has ${out.unions} union-typed fields; the API allows 16 per request`);
+    assert.ok(out.optional <= 24, `${name} has ${out.optional} optional fields; the API allows 24 per request`);
+    assert.equal(JSON.stringify(original), before, `${name}: the transform must not change the schema it is given`);
+  }
+  // The limits are not lost: they are restated for the model, and zod still enforces them on the answer.
+  const steps = claudeSchema(zodTextFormat(visuals.DiagramPlan, "answer").schema as Record<string, unknown>) as any;
+  assert.match(steps.properties.callouts.description, /at most 6 items/);
+  assert.match(steps.properties.callouts.items.properties.label.description, /at most 28 characters/);
+  assert.equal(visuals.DiagramPlan.safeParse({ hedraPrompt: "x", callouts: [] }).success, false);
 });

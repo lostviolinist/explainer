@@ -38,6 +38,73 @@ async function inlineImage(url: string): Promise<Anthropic.ImageBlockParam> {
 
 type Client = Pick<Anthropic, "messages">;
 
+const STRING_FORMATS = new Set(["date-time", "time", "date", "duration", "email", "hostname", "uri", "ipv4", "ipv6", "uuid"]);
+
+/**
+ * Claude's structured outputs refuse the constraint keywords zod emits for .min()/.max()
+ * (minimum, maxLength, minItems above 1, maxItems…) with a 400, not a warning. They are
+ * removed here and restated in plain words in the description; the answer is still checked
+ * against the full zod schema afterwards, so a limit the model overshoots is caught and sent
+ * back for one retry, exactly as with OpenAI.
+ */
+export function claudeSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const root = structuredClone(schema) as Record<string, unknown>;
+  delete root.$schema;
+  strip(root);
+  // zodTextFormat keeps a copy of the whole answer under definitions.answer that nothing points at;
+  // it doubles the schema and counts twice against the API's limit on union-typed fields.
+  for (const key of ["definitions", "$defs"] as const) {
+    const defs = root[key] as Record<string, unknown> | undefined;
+    if (!defs) continue;
+    for (let dropped = true; dropped; ) {
+      const used = new Set<string>();
+      JSON.stringify(root, (k, v) => {
+        if (k === "$ref" && typeof v === "string") used.add(v.replace(/^#\/(definitions|\$defs)\//, ""));
+        return v;
+      });
+      dropped = false;
+      for (const name of Object.keys(defs)) if (!used.has(name)) { delete defs[name]; dropped = true; }
+    }
+    if (!Object.keys(defs).length) delete root[key];
+  }
+  return root;
+}
+
+function strip(node: any): any {
+  if (Array.isArray(node)) return node.map(strip);
+  if (!node || typeof node !== "object") return node;
+  const notes: string[] = [];
+  const take = (k: string) => {
+    const v = node[k];
+    delete node[k];
+    return v;
+  };
+  const lo = take("minimum") ?? take("exclusiveMinimum");
+  const hi = take("maximum") ?? take("exclusiveMaximum");
+  take("multipleOf");
+  if (lo !== undefined && hi !== undefined) notes.push(`between ${lo} and ${hi}`);
+  else if (lo !== undefined) notes.push(`at least ${lo}`);
+  else if (hi !== undefined) notes.push(`at most ${hi}`);
+  const minL = take("minLength");
+  const maxL = take("maxLength");
+  if (minL > 1 && maxL !== undefined) notes.push(`${minL} to ${maxL} characters`);
+  else if (maxL !== undefined) notes.push(`at most ${maxL} characters`);
+  else if (minL > 1) notes.push(`at least ${minL} characters`);
+  const minI = node.minItems > 1 ? take("minItems") : undefined;
+  const maxI = take("maxItems");
+  take("uniqueItems");
+  if (minI !== undefined && maxI !== undefined) notes.push(`${minI} to ${maxI} items`);
+  else if (minI !== undefined) notes.push(`at least ${minI} items`);
+  else if (maxI !== undefined) notes.push(`at most ${maxI} items`);
+  if (typeof node.format === "string" && !STRING_FORMATS.has(node.format)) notes.push(`format: ${take("format")}`);
+  if (Array.isArray(node.oneOf)) node.anyOf = take("oneOf");
+  if ((node.type === "object" || node.properties) && typeof node.additionalProperties !== "object") node.additionalProperties = false;
+  if (notes.length) node.description = [node.description, `(${notes.join(", ")})`].filter(Boolean).join(" ");
+  for (const k of ["properties", "$defs", "definitions"]) if (node[k] && typeof node[k] === "object") for (const key of Object.keys(node[k])) node[k][key] = strip(node[k][key]);
+  for (const k of ["items", "anyOf", "allOf", "not"]) if (k in node) node[k] = strip(node[k]);
+  return node;
+}
+
 export class AnthropicLLM implements LLM {
   private client: Client;
   constructor(
@@ -50,13 +117,13 @@ export class AnthropicLLM implements LLM {
   }
 
   private async call<T>(model: string, system: string, content: Anthropic.ContentBlockParam[], schema: z.ZodType<T>, maxTokens: number, effort: Effort): Promise<T> {
-    const { schema: jsonSchema } = zodTextFormat(schema as z.ZodTypeAny, "answer");
+    const jsonSchema = claudeSchema(zodTextFormat(schema as z.ZodTypeAny, "answer").schema as Record<string, unknown>);
     const res = await this.client.messages.create({
       model,
       max_tokens: Math.min(64_000, maxTokens + THINKING_HEADROOM),
       system,
       messages: [{ role: "user", content }],
-      output_config: { format: { type: "json_schema", schema: jsonSchema as Record<string, unknown> }, effort },
+      output_config: { format: { type: "json_schema", schema: jsonSchema }, effort },
     });
     if (res.stop_reason === "refusal") throw new Error(`the model declined this request${res.stop_details?.explanation ? `: ${res.stop_details.explanation}` : ""}`);
     if (res.stop_reason === "max_tokens") throw new Error("the model ran out of room for its answer; raise maxTokens");
