@@ -7,7 +7,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { HedraClient } from "@explainer/hedra";
-import { OpenAILLM, AnthropicLLM, ExaSearch, loadHouseStyle, llmProvider, llmModelName, modelWritesAnimation } from "@explainer/pipeline";
+import { OpenAILLM, AnthropicLLM, ExaSearch, loadHouseStyle, llmProvider, llmModelName, claudeEffortFloor, modelWritesAnimation } from "@explainer/pipeline";
 import { ensureRenderBrowser } from "@explainer/render";
 import { db } from "./db";
 
@@ -119,7 +119,8 @@ export async function runPreflight(): Promise<Check[]> {
         const Ok = z.object({ ok: z.literal(true) });
         await llm.json({ system: 'Reply with exactly {"ok": true}.', user: "ping", schema: Ok, maxTokens: 20, effort: "low" });
         await llm.vision({ system: 'If you can see an image, reply with exactly {"ok": true}.', user: "ping", imageUrls: [PNG], schema: Ok });
-        return `${llmModelName()} (${llmProvider() === "anthropic" ? "Anthropic" : "OpenAI"}): JSON and image input OK`;
+        const effort = llmProvider() === "anthropic" && claudeEffortFloor() ? `, effort ${claudeEffortFloor()}` : "";
+        return `${llmModelName()} (${llmProvider() === "anthropic" ? "Anthropic" : "OpenAI"}${effort}): JSON and image input OK`;
       },
     ),
     run("Word timing", "Set OPENAI_API_KEY (used only to transcribe the narration for caption timing) or ALIGNMENT_URL; without either, timing is estimated.", async () => {

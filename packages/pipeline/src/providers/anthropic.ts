@@ -19,13 +19,40 @@ import type { Effort, LLM } from "./llm.js";
 
 export const CLAUDE_MODEL = "claude-opus-5-5";
 
-/** A model name from the environment is used only when it is a Claude model; a gpt-* name left over from an OpenAI setup is ignored. */
+/** Claude's effort ladder; the pipeline's hints (low / medium / high) are its lower rungs. */
+export type ClaudeEffort = Effort | "xhigh" | "max";
+const EFFORTS: ClaudeEffort[] = ["low", "medium", "high", "xhigh", "max"];
+
+/** "high" → "high"; anything else → null. */
+export function claudeEffort(name: string | undefined): ClaudeEffort | null {
+  const v = (name ?? "").trim().toLowerCase() as ClaudeEffort;
+  return EFFORTS.includes(v) ? v : null;
+}
+
+/**
+ * A model name from the environment: a Claude model, optionally with the effort
+ * written on the end the way model pickers show it ("claude-opus-5-5-high" is
+ * claude-opus-5-5 at effort high). A gpt-* name left over from an OpenAI setup
+ * is ignored.
+ */
+export function parseClaudeModel(name: string | undefined): { model: string; effort: ClaudeEffort | null } {
+  const m = /^(claude-.*?)(?:-(low|medium|high|xhigh|max))?$/i.exec((name ?? "").trim());
+  if (!m) return { model: CLAUDE_MODEL, effort: null };
+  return { model: m[1]!, effort: claudeEffort(m[2]) };
+}
+
 export function claudeModel(name: string | undefined): string {
-  return name && /^claude-/i.test(name) ? name : CLAUDE_MODEL;
+  return parseClaudeModel(name).model;
+}
+
+/** The effort floor the operator set (LLM_EFFORT, or a suffix on LLM_MODEL), if any. */
+export function claudeEffortFloor(env: NodeJS.ProcessEnv = process.env): ClaudeEffort | null {
+  return claudeEffort(env.LLM_EFFORT) ?? parseClaudeModel(env.LLM_MODEL).effort;
 }
 
 /** Thinking shares max_tokens with the answer, so the stages' JSON budgets get room for it. */
-const THINKING_HEADROOM = 16_000;
+/** Room above the answer for adaptive thinking; more at higher effort, where thinking runs longer. */
+const thinkingHeadroom = (effort: ClaudeEffort) => (effort === "max" || effort === "xhigh" ? 48_000 : effort === "high" ? 32_000 : 16_000);
 
 /** Images go inline: our asset URLs (localhost:9000, a private bucket) aren't reachable from Anthropic's servers. */
 async function inlineImage(url: string): Promise<Anthropic.ImageBlockParam> {
@@ -112,15 +139,23 @@ export class AnthropicLLM implements LLM {
     private model = claudeModel(process.env.LLM_MODEL),
     private visionModel = claudeModel(process.env.LLM_VISION_MODEL || process.env.LLM_MODEL),
     client?: Client,
+    /** No call runs below this effort (LLM_EFFORT=high makes "Opus 5.5 high"); the stages' own hints still raise it. */
+    private floor: ClaudeEffort | null = claudeEffortFloor(),
   ) {
     this.client = client ?? new Anthropic(apiKey ? { apiKey } : {});
   }
 
-  private async call<T>(model: string, system: string, content: Anthropic.ContentBlockParam[], schema: z.ZodType<T>, maxTokens: number, effort: Effort): Promise<T> {
+  /** The stage's hint, raised to the operator's floor. */
+  private effort(hint: Effort): ClaudeEffort {
+    return this.floor && EFFORTS.indexOf(this.floor) > EFFORTS.indexOf(hint) ? this.floor : hint;
+  }
+
+  private async call<T>(model: string, system: string, content: Anthropic.ContentBlockParam[], schema: z.ZodType<T>, maxTokens: number, hint: Effort): Promise<T> {
+    const effort = this.effort(hint);
     const jsonSchema = claudeSchema(zodTextFormat(schema as z.ZodTypeAny, "answer").schema as Record<string, unknown>);
     const res = await this.client.messages.create({
       model,
-      max_tokens: Math.min(64_000, maxTokens + THINKING_HEADROOM),
+      max_tokens: Math.min(100_000, maxTokens + thinkingHeadroom(effort)),
       system,
       messages: [{ role: "user", content }],
       output_config: { format: { type: "json_schema", schema: jsonSchema }, effort },

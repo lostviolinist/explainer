@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
-import { AnthropicLLM, claudeSchema } from "../src/providers/anthropic.ts";
+import { AnthropicLLM, claudeSchema, claudeEffortFloor, parseClaudeModel } from "../src/providers/anthropic.ts";
 import { llmProvider, llmModelName } from "../src/context.ts";
 import { zodTextFormat } from "openai/helpers/zod";
 import * as assemble from "../src/stages/assemble.ts";
@@ -128,4 +128,28 @@ test("every schema the pipeline sends fits Claude's structured outputs after the
   assert.match(steps.properties.callouts.description, /at most 6 items/);
   assert.match(steps.properties.callouts.items.properties.label.description, /at most 28 characters/);
   assert.equal(visuals.DiagramPlan.safeParse({ hedraPrompt: "x", callouts: [] }).success, false);
+});
+
+test("LLM_EFFORT is a floor: a stage's low-effort check runs at the operator's effort, and more room is left for thinking", async () => {
+  const { client, requests } = fakeClient([{ ok: true }, { ok: true }]);
+  const llm = new AnthropicLLM("k", "claude-opus-5-5", "claude-opus-5-5", client, "high");
+  await llm.json({ system: "s", user: "u", schema: z.object({ ok: z.literal(true) }), maxTokens: 500, effort: "low" });
+  assert.equal(requests[0].output_config.effort, "high");
+  assert.equal(requests[0].max_tokens, 32_500);
+  // The floor never lowers a hint.
+  const high = new AnthropicLLM("k", "claude-opus-5-5", "claude-opus-5-5", client, "low");
+  await high.json({ system: "s", user: "u", schema: z.object({ ok: z.literal(true) }), effort: "high" });
+  assert.equal(requests[1].output_config.effort, "high");
+});
+
+test("'Opus 5.5 high' spelled as a model name is the model plus an effort floor", () => {
+  assert.deepEqual(parseClaudeModel("claude-opus-5-5-high"), { model: "claude-opus-5-5", effort: "high" });
+  assert.deepEqual(parseClaudeModel("claude-opus-5-5"), { model: "claude-opus-5-5", effort: null });
+  assert.deepEqual(parseClaudeModel("claude-sonnet-5-5-max"), { model: "claude-sonnet-5-5", effort: "max" });
+  assert.deepEqual(parseClaudeModel("gpt-6.1-sol"), { model: "claude-opus-5-5", effort: null });
+  assert.equal(claudeEffortFloor({ LLM_EFFORT: "High" }), "high");
+  assert.equal(claudeEffortFloor({ LLM_MODEL: "claude-opus-5-5-xhigh" }), "xhigh");
+  assert.equal(claudeEffortFloor({ LLM_EFFORT: "turbo" }), null, "an unknown word is not an effort");
+  assert.equal(claudeEffortFloor({}), null);
+  assert.equal(llmModelName({ ANTHROPIC_API_KEY: "k", LLM_MODEL: "claude-opus-5-5-high" }), "claude-opus-5-5", "the suffix never reaches the API as part of the model id");
 });
