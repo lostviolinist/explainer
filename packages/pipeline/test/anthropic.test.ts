@@ -15,19 +15,22 @@ function fakeClient(answers: (unknown | Error)[]) {
   const requests: any[] = [];
   const client = {
     messages: {
-      create: async (req: any) => {
-        requests.push(req);
-        const a = answers.shift();
-        if (a instanceof Error) throw a;
-        if (a && typeof a === "object" && "stop_reason" in (a as any)) return a;
-        return { stop_reason: "end_turn", stop_details: null, content: [{ type: "text", text: JSON.stringify(a) }] };
-      },
+      // The provider streams every request and reads it to the end; the fake answers the same way.
+      stream: (req: any) => ({
+        finalMessage: async () => {
+          requests.push(req);
+          const a = answers.shift();
+          if (a instanceof Error) throw a;
+          if (a && typeof a === "object" && "stop_reason" in (a as any)) return a;
+          return { stop_reason: "end_turn", stop_details: null, content: [{ type: "text", text: JSON.stringify(a) }] };
+        },
+      }),
     },
   };
   return { client: client as any, requests };
 }
 
-test("json: structured output with a strict schema, effort in output_config, room for thinking", async () => {
+test("json: a streamed request with a strict schema, effort in output_config, room for thinking", async () => {
   const { client, requests } = fakeClient([{ ok: true }]);
   const llm = new AnthropicLLM("k", "claude-opus-5-5", "claude-opus-5-5", client);
   const out = await llm.json({ system: "sys", user: "hi", schema: z.object({ ok: z.literal(true) }), maxTokens: 500, effort: "low" });
@@ -41,6 +44,7 @@ test("json: structured output with a strict schema, effort in output_config, roo
   assert.equal(r.output_config.format.type, "json_schema");
   assert.equal(r.output_config.format.schema.additionalProperties, false, "every object closed, as for OpenAI's strict mode");
   assert.equal(r.thinking, undefined, "adaptive thinking is the default on Opus 5.5; never disabled");
+  assert.equal(r.stream, undefined, "messages.stream sets the flag itself; a plain create would be refused by the SDK for long answers");
 });
 
 test("json: an answer that fails the zod check is retried once with the error fed back; a refusal is reported plainly", async () => {

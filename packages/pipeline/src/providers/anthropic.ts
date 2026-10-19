@@ -63,7 +63,13 @@ async function inlineImage(url: string): Promise<Anthropic.ImageBlockParam> {
   return { type: "image", source: { type: "base64", media_type: type as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: Buffer.from(await res.arrayBuffer()).toString("base64") } };
 }
 
-type Client = Pick<Anthropic, "messages">;
+/**
+ * What the provider needs from the SDK: a streamed request, read to its end.
+ * Streaming is how the SDK wants anything that may run long (a high-effort
+ * answer with room for thinking is one); without it the SDK refuses such a
+ * request outright, before it is sent.
+ */
+type Client = { messages: { stream(params: Anthropic.MessageStreamParams): { finalMessage(): Promise<Anthropic.Message> } } };
 
 const STRING_FORMATS = new Set(["date-time", "time", "date", "duration", "email", "hostname", "uri", "ipv4", "ipv6", "uuid"]);
 
@@ -153,13 +159,15 @@ export class AnthropicLLM implements LLM {
   private async call<T>(model: string, system: string, content: Anthropic.ContentBlockParam[], schema: z.ZodType<T>, maxTokens: number, hint: Effort): Promise<T> {
     const effort = this.effort(hint);
     const jsonSchema = claudeSchema(zodTextFormat(schema as z.ZodTypeAny, "answer").schema as Record<string, unknown>);
-    const res = await this.client.messages.create({
-      model,
-      max_tokens: Math.min(100_000, maxTokens + thinkingHeadroom(effort)),
-      system,
-      messages: [{ role: "user", content }],
-      output_config: { format: { type: "json_schema", schema: jsonSchema }, effort },
-    });
+    const res = await this.client.messages
+      .stream({
+        model,
+        max_tokens: Math.min(100_000, maxTokens + thinkingHeadroom(effort)),
+        system,
+        messages: [{ role: "user", content }],
+        output_config: { format: { type: "json_schema", schema: jsonSchema }, effort },
+      })
+      .finalMessage();
     if (res.stop_reason === "refusal") throw new Error(`the model declined this request${res.stop_details?.explanation ? `: ${res.stop_details.explanation}` : ""}`);
     if (res.stop_reason === "max_tokens") throw new Error("the model ran out of room for its answer; raise maxTokens");
     const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("");
