@@ -9,9 +9,10 @@ type Spec = Extract<AnimSpec, { kind: "split" }>;
 type Scene = ExplainerProps["scenes"][number];
 
 /**
- * Two sides: myth and fact, before and after. Each card slides in from its
- * side on its cue; at the verdict the losing side is stamped and dimmed, the
- * winning side is stamped and lifted.
+ * Two sides: myth and fact, before and after. Both cards stand from the start
+ * with their headings, so the frame is never empty while the narration sets
+ * the scene up; each card's words land on its cue. At the verdict the losing
+ * side is stamped and dimmed, the winning side is stamped and lifted.
  */
 export function Split({ spec, scene, theme, sfx }: { spec: Spec; scene: Scene; theme: Theme; sfx: Record<string, string>; area?: Area }) {
   const t = useT();
@@ -31,14 +32,14 @@ export function Split({ spec, scene, theme, sfx }: { spec: Spec; scene: Scene; t
         const judged = t >= verdictAt;
         const lift = judged && wins ? 1 + 0.03 * Math.min(1, (t - verdictAt) / 0.5) : 1;
         return (
-          <div key={i} style={{ position: "absolute", left: x, top: 230, width: 780, height: 520, ...enter(t, at, 0.55, from) }}>
+          <div key={i} style={{ position: "absolute", left: x, top: 230, width: 780, height: 520, ...enter(t, 0.4 + 0.12 * i, 0.55, from) }}>
             <div style={{ position: "absolute", inset: 0, borderRadius: 36, background: theme.card, padding: 48, display: "flex", flexDirection: "column", opacity: judged && !wins ? 0.5 : 1, transform: `scale(${lift})` }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", color: theme.muted }}>{side.heading}</div>
                 {side.icon && <Disc icon={side.icon} color={color} size={104} theme={theme} />}
               </div>
               <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
-                <div style={{ fontSize: 46, fontWeight: 500, color: theme.ink, lineHeight: 1.25 }}>{side.text}</div>
+                <div style={{ fontSize: 46, fontWeight: 500, color: theme.ink, lineHeight: 1.25, ...enter(t, at, 0.45, "up") }}>{side.text}</div>
               </div>
             </div>
             {judged && (

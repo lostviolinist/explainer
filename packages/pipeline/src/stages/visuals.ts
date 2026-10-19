@@ -229,8 +229,9 @@ export async function narrate(ctx: Ctx, brief: Brief, scene: Scene): Promise<Sce
   await makeProgress(ctx, brief.projectId, "visuals")(`recorded narration for scene ${scene.id.slice(1)}`, 0.2, { sceneId: scene.id, audioUrl: asset.url });
   // Hedra reports duration for audio; estimate from word count if it ever doesn't.
   const durationS = asset.durationMs ? asset.durationMs / 1000 : (scene.narration.split(/\s+/).length / v.wordsPerMinute) * 60;
-  const { words } = await ctx.aligner.align(asset.url, scene.narration, durationS);
-  return { asset, durationS, words };
+  const { words, exact, reason } = await ctx.aligner.align(asset.url, scene.narration, durationS);
+  if (!exact) await makeProgress(ctx, brief.projectId, "visuals")(`caption timing for scene ${scene.id.slice(1)} is estimated (${reason ?? "no transcription"})`, 0.2, { sceneId: scene.id });
+  return { asset, durationS, words, exact, timingNote: exact ? null : (reason ?? "no transcription") };
 }
 
 export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan, sceneIn: Scene, audio: SceneAssets["audio"]): Promise<SceneAssets> {

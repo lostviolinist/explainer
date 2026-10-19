@@ -60,6 +60,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       {cost > 0 && (
         <p className="small cost">This video cost ${cost.toFixed(2)} to make: search, writing, voice{project.style === "math" ? " and the checks" : ", pictures and the checks"}.</p>
       )}
+      {live.scenes.some((s) => s.captionsExact === false) && (
+        <p className="small cost">
+          Caption timing in {live.scenes.filter((s) => s.captionsExact === false).length} of {live.scenes.length} scenes was estimated from the words, not heard: the transcription failed
+          {" "}({live.scenes.find((s) => s.captionsExact === false)?.timingNote ?? "no transcription"}). Whoever runs this site can check the Word timing row at /?setup.
+        </p>
+      )}
       <form action={react} className="followup">
         <input type="hidden" name="projectId" value={id} />
         <input type="hidden" name="reaction" value="follow-up" />

@@ -337,6 +337,10 @@ export const SceneAssets = z.object({
     asset: MirroredAsset,
     durationS: z.number(),
     words: z.array(WordTimestamp),
+    /** False when the word times were estimated from the text because transcription failed; captions then drift. */
+    exact: z.boolean().optional(),
+    /** Why transcription failed, when it did. */
+    timingNote: z.string().nullable().optional(),
   }),
   visuals: z.array(
     z.object({
@@ -412,11 +416,15 @@ export type ProgressEvent = z.infer<typeof ProgressEvent>;
 /** Fixed timing in the rendered video: a pause after each scene and the sources end card. */
 export const VIDEO_TIMING = { sceneTailS: 0.6, endCardS: 6 } as const;
 
-/** Scene budget from the brief: ~165 wpm at 1.1×, 20–40 s per scene. */
+/**
+ * Scene budget from the brief: ~165 wpm at 1.1×, 12–22 s per scene. A scene
+ * is one picture or one template, so its length is how long the viewer looks
+ * at one thing; past twenty seconds attention goes.
+ */
 export function sceneBudget(lengthS: number, wpm = 165) {
   const wordBudget = Math.round((lengthS / 60) * wpm);
-  const minScenes = Math.max(3, Math.floor(lengthS / 40));
-  const maxScenes = Math.max(minScenes, Math.ceil(lengthS / 20));
+  const minScenes = Math.max(4, Math.floor(lengthS / 22));
+  const maxScenes = Math.max(minScenes, Math.ceil(lengthS / 12));
   return { wordBudget, sceneRange: [minScenes, maxScenes] as [number, number] };
 }
 

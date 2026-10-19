@@ -17,6 +17,9 @@ export type LiveScene = {
   audioUrl?: string;
   /** Word timestamps and narration length, once the scene is done (for the rough cut). */
   words?: { w: string; start: number; end: number }[];
+  /** False when the scene's word timing was estimated because transcription failed. */
+  captionsExact?: boolean;
+  timingNote?: string;
   durationS?: number;
   done: boolean;
 };
@@ -86,6 +89,8 @@ export async function getLiveState(projectId: string): Promise<LiveState> {
         audioUrl: a?.audio.asset.url,
         words: a?.audio.words,
         durationS: a?.audio.durationS,
+        captionsExact: a?.audio.exact,
+        timingNote: a?.audio.timingNote ?? undefined,
         done: Boolean(a),
       };
     }),

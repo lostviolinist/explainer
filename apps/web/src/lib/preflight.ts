@@ -123,10 +123,21 @@ export async function runPreflight(): Promise<Check[]> {
         return `${llmModelName()} (${llmProvider() === "anthropic" ? "Anthropic" : "OpenAI"}${effort}): JSON and image input OK`;
       },
     ),
-    run("Word timing", "Set OPENAI_API_KEY (used only to transcribe the narration for caption timing) or ALIGNMENT_URL; without either, timing is estimated.", async () => {
+    run("Word timing", "Set OPENAI_API_KEY (used only to transcribe the narration for caption timing) or ALIGNMENT_URL; without either, timing is estimated. If the model is not available to your OpenAI account, set ALIGNMENT_MODEL to one that supports word timestamps.", async () => {
       if (process.env.ALIGNMENT_URL) return `transcription service at ${process.env.ALIGNMENT_URL}`;
-      if (process.env.OPENAI_API_KEY) return `OpenAI ${process.env.ALIGNMENT_MODEL || "whisper-1"} transcribes the narration`;
-      return { warn: "no OPENAI_API_KEY: caption timing is estimated from the words, not transcribed" };
+      if (!process.env.OPENAI_API_KEY) return { warn: "no OPENAI_API_KEY: caption timing is estimated from the words, not transcribed" };
+      // The key alone proves nothing: the transcription model must be reachable with it, or every video's captions drift.
+      const model = process.env.ALIGNMENT_MODEL || "whisper-1";
+      const res = await fetch(`${(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "")}/models/${encodeURIComponent(model)}`, {
+        headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+        return { warn: `OpenAI ${model} is not available with this key (${res.status}${body.error?.message ? `: ${body.error.message.slice(0, 160)}` : ""}); caption timing is estimated until it is` };
+      }
+      return `OpenAI ${model} transcribes the narration`;
     }),
 
     run("Exa", `Set EXA_API_KEY and check the account has credits (dashboard.exa.ai). ${restart}`, async () => {

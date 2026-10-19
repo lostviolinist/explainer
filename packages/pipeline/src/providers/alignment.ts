@@ -17,7 +17,7 @@ import type { WordTimestamp } from "@explainer/schemas";
 
 export interface Aligner {
   /** `exact` is false when the times are estimated rather than heard. */
-  align(audioUrl: string, transcript: string, durationS: number): Promise<{ words: WordTimestamp[]; exact: boolean }>;
+  align(audioUrl: string, transcript: string, durationS: number): Promise<{ words: WordTimestamp[]; exact: boolean; reason?: string }>;
 }
 
 export class HttpAligner implements Aligner {
@@ -170,14 +170,16 @@ export function estimateSplit(transcript: string, durationS: number): WordTimest
 export class FallbackAligner implements Aligner {
   constructor(private primary: Aligner | null, private onFallback?: (reason: string) => void) {}
   async align(audioUrl: string, transcript: string, durationS: number) {
+    let reason = "no transcription configured";
     if (this.primary) {
       try {
         return await this.primary.align(audioUrl, transcript, durationS);
       } catch (e) {
-        this.onFallback?.((e as Error).message);
+        reason = (e as Error).message.slice(0, 300);
+        this.onFallback?.(reason);
       }
     }
-    return { words: estimateSplit(transcript, durationS), exact: false };
+    return { words: estimateSplit(transcript, durationS), exact: false, reason };
   }
 }
 

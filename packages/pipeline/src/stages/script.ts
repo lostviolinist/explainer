@@ -154,7 +154,7 @@ export async function script(ctx: Ctx, brief: Brief, research: ResearchBrief): P
   const progress = makeProgress(ctx, brief.projectId, "script");
   const maxS = maxVideoSeconds();
   const lengthS = Math.min(brief.lengthS ?? 180, maxS);
-  const [minScenes, maxScenes] = brief.sceneRange ?? [4, 9];
+  const [minScenes, maxScenes] = brief.sceneRange ?? [6, 15];
   const wpm = ctx.style.voice.wordsPerMinute;
   // Narration that fits the cap once scene pauses and the end card are added.
   const limitS = maxS * LENGTH_MARGIN;
@@ -191,7 +191,7 @@ Beat durations sum to ${lengthS} s; the whole video must not exceed ${clock(maxS
     });
 
     const { scenes, cast } = await ctx.llm.json({
-      system: `Write the scenes for this arc. ${minScenes}–${maxScenes} scenes, 20–40 s each, ${wordBudget} words of narration in total (hard limit), spoken at about ${ctx.style.voice.wordsPerMinute} words per minute.
+      system: `Write the scenes for this arc. ${minScenes}–${maxScenes} scenes, 12–22 s each (never more than 25), ${wordBudget} words of narration in total (hard limit), spoken at about ${ctx.style.voice.wordsPerMinute} words per minute. A scene is one picture or one animation: when a beat needs more than 22 s, split it into two scenes with two different things to look at.
 Each scene has three tracks:
 - narration: what is said. Short sentences. Every sentence maps to a claim id in claimIds. Introduce a term before using it. The hook is a question or a surprising fact; the recap restates the goal in one breath.
 - visualDirection: what is seen. It MUST name the scene's metaphor and at least two supporting details, never only the objects (good: "an eye as the observer, a dotted ring for the horizon, ghost stars where the light seems to come from"; bad: "a black hole and a star").
@@ -208,7 +208,7 @@ onScreenTerms: words that will appear as labels; must appear in the narration.
 Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.${lengthNote ? `\nLENGTH: ${lengthNote}` : ""}`,
       user: `Arc:\n${JSON.stringify(arc.beats, null, 1)}\n\nClaims:\n${claimList}\n\nAnalogies:\n${analogies}`,
       schema: Scenes,
-      maxTokens: 6000,
+      maxTokens: 9000,
     });
 
     let planScenes: Scene[] = scenes.map((s, i) =>
@@ -217,7 +217,7 @@ Tone: ${brief.tone}. Audience: ${LEVEL_WORDS[brief.level]}.${lengthNote ? `\nLEN
         id: `s${i + 1}`,
         // Only types on offer for this style and the running engines; Scene allows 5–45 s.
         visualType: fitVisualType(s.visualType, offered),
-        targetS: Math.min(45, Math.max(5, s.targetS)),
+        targetS: Math.min(30, Math.max(5, s.targetS)),
         render: null,
       }),
     );

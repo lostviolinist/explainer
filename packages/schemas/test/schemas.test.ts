@@ -5,7 +5,7 @@ import { Brief, lengthFromClaims, sceneBudget, Scene } from "../src/index.ts";
 test("scene budget for 3 minutes at 165 wpm", () => {
   const b = sceneBudget(180);
   assert.equal(b.wordBudget, 495);
-  assert.deepEqual(b.sceneRange, [4, 9]);
+  assert.deepEqual(b.sceneRange, [8, 15], "12–22 s per scene: one thing to look at, never longer than attention lasts");
 });
 
 test("length from needed claims", () => {
