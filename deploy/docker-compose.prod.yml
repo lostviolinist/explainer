@@ -1,0 +1,40 @@
+# Production on one machine: the same stack as docker-compose.yml behind Caddy,
+# which gets an HTTPS certificate for $DOMAIN by itself. Nothing but Caddy is
+# reachable from outside; videos are served through it at /s3/… on the same
+# origin as the site. Needs Docker Compose 2.24+ (for `!reset`).
+#
+#   DOMAIN=explain.example.com   # in .env, next to the API keys
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+#
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env to the hostname this runs at}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web]
+
+  web:
+    ports: !reset []
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_APP_URL: https://${DOMAIN}
+    environment:
+      NEXT_PUBLIC_APP_URL: https://${DOMAIN}
+      ASSETS_PUBLIC_BASE: https://${DOMAIN}/s3/explainer-assets
+
+  postgres:
+    ports: !reset []
+
+  inngest:
+    ports: !reset []
+
+volumes:
+  caddy_data:
+  caddy_config:

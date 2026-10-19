@@ -192,7 +192,7 @@ export function Progress({ projectId, question, initial, initialLive }: { projec
           <div className="setup-problems stuck">
             <strong>Nothing has picked this up yet</strong>
             <div className="small">
-              The background worker (Inngest) isn't running, or hasn't found the app. Check the <a href="/?setup">setup page</a> and <a href="http://localhost:8288" target="_blank" rel="noreferrer">localhost:8288</a>, or run <code>docker compose logs inngest web</code>. The run will continue on its own once the worker is back.
+              The background worker (Inngest) isn't running, or hasn't found the app. Check the <a href="/?setup">setup page</a>, or on the machine running it, <code>docker compose logs inngest web</code>. The run will continue on its own once the worker is back.
             </div>
           </div>
         )}

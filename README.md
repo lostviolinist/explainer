@@ -26,6 +26,8 @@ Good to know:
 
 Keys and credits are the only things that can stop a run. The app checks them quietly before it starts one.
 
+To put it on a server for other people: [deploy/README.md](deploy/README.md) (one machine, HTTPS, about fifteen minutes).
+
 ## The philosophy
 
 ### Nothing is asked of the user

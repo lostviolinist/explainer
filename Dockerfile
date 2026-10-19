@@ -21,6 +21,9 @@ RUN pnpm install --frozen-lockfile
 
 # The renderer bundles packages/render/src at runtime, so the whole source stays in the image.
 COPY . .
+# The public address is inlined into the site at build time (deploy/docker-compose.prod.yml sets it).
+ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 RUN pnpm --filter @explainer/web build
 # Remotion's headless Chrome, fetched now. It is cached under the nearest package.json to the
 # working directory, so install it from apps/web (the sandbox runs from there too). The animation
