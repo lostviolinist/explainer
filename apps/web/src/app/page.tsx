@@ -24,7 +24,14 @@ export default async function Home() {
             {recent.map((p) => (
               <Link key={p.id} href={`/p/${p.id}`} className="gallery-card">
                 <div className={`thumb ${p.style === "math" ? "math" : ""}`}>
-                  {p.poster ? <img src={p.poster} alt="" /> : <span className="thumb-mark">{p.style === "math" ? "∑" : "▶"}</span>}
+                  {p.poster ? (
+                    <img src={p.poster} alt="" />
+                  ) : p.videoUrl ? (
+                    // No still to show (older videos, 3Blue1Brown): a frame from half a second in.
+                    <video src={`${p.videoUrl}#t=0.5`} preload="metadata" muted playsInline aria-hidden />
+                  ) : (
+                    <span className="thumb-mark">{p.style === "math" ? "∑" : "▶"}</span>
+                  )}
                   {p.durationS && <span className="length">{clock(p.durationS)}</span>}
                 </div>
                 <span className="q">{p.question}</span>

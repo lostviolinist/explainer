@@ -90,8 +90,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none !importan
 .setup-problems li.ok b { color: var(--green); }
 .recent { margin-top: 40px; }
 .recent .chips { margin-top: 10px; }
-.recent a { display: inline-block; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; background: var(--surface); color: var(--ink); font-size: 14px; transition: border-color .15s; }
-.recent a:hover { border-color: var(--line-2); }
+.recent .chips a { display: inline-block; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; background: var(--surface); color: var(--ink); font-size: 14px; transition: border-color .15s; }
+.recent .chips a:hover { border-color: var(--line-2); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); }
@@ -232,7 +232,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none !importan
 .gallery-card .thumb { position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #F6F3EC; border: 1px solid var(--line); transition: transform .15s ease; }
 .gallery-card .thumb.math { background: #000; }
 .gallery-card:hover .thumb { transform: translateY(-2px); }
-.gallery-card .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gallery-card .thumb img, .gallery-card .thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .gallery-card .thumb-mark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 28px; color: rgba(255,255,255,0.8); }
 .gallery-card .length { position: absolute; right: 8px; bottom: 8px; font-size: 11px; font-variant-numeric: tabular-nums; padding: 2px 7px; border-radius: 999px; background: rgba(0,0,0,0.6); color: #fff; }
 .gallery-card .q { font-size: 14px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

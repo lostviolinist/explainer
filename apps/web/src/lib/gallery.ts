@@ -7,15 +7,23 @@ import type { RenderResult, SceneAssets } from "@explainer/schemas";
 import { db, schema } from "./db";
 import { toPublic } from "./public-urls";
 
-export type GalleryItem = { id: string; question: string; style: string; shareSlug: string; poster: string | null; durationS: number | null; createdAt: string };
+export type GalleryItem = { id: string; question: string; style: string; shareSlug: string; poster: string | null; videoUrl: string | null; durationS: number | null; createdAt: string };
 
+/** One card per question: the same question asked four times (re-runs, Simpler, Deeper) shows its newest video. */
 export async function recentVideos(limit = 8): Promise<GalleryItem[]> {
-  const projects = await db
+  const candidates = await db
     .select({ id: schema.projects.id, question: schema.projects.question, style: schema.projects.style, shareSlug: schema.projects.shareSlug, createdAt: schema.projects.createdAt })
     .from(schema.projects)
     .where(eq(schema.projects.stage, "done"))
     .orderBy(desc(schema.projects.createdAt))
-    .limit(limit);
+    .limit(limit * 4);
+  const seen = new Set<string>();
+  const projects = candidates.filter((p) => {
+    const key = `${p.style}:${p.question.trim().toLowerCase().replace(/[^a-z0-9 ]/g, "")}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, limit);
   if (!projects.length) return [];
   const rows = await db
     .select({ projectId: schema.artifacts.projectId, kind: schema.artifacts.kind, sceneId: schema.artifacts.sceneId, data: schema.artifacts.data, createdAt: schema.artifacts.createdAt })
@@ -31,7 +39,7 @@ export async function recentVideos(limit = 8): Promise<GalleryItem[]> {
       .map((r) => r.data as SceneAssets)
       .sort((a, b) => Number(a.sceneId.slice(1)) - Number(b.sceneId.slice(1)));
     const poster = stills.flatMap((a) => a.visuals).find((v) => v.role === "still" || v.role === "background")?.asset.url ?? null;
-    return { id: p.id, question: p.question, style: p.style, shareSlug: p.shareSlug, poster: toPublic(poster), durationS: render?.durationS ?? null, createdAt: p.createdAt.toISOString() };
+    return { id: p.id, question: p.question, style: p.style, shareSlug: p.shareSlug, poster: toPublic(poster), videoUrl: toPublic(render?.videoUrl ?? null), durationS: render?.durationS ?? null, createdAt: p.createdAt.toISOString() };
   });
 }
 

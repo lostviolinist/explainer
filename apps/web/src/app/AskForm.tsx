@@ -138,7 +138,10 @@ export function AskForm() {
           {blocked && !details && (
             <div className="setup-problems">
               <strong>We can't make videos right now</strong>
-              <div className="small">A service we rely on is unavailable. Please try again in a few minutes.</div>
+              <div className="small">
+                A service we rely on is unavailable. Please try again in a few minutes.{" "}
+                <a href="/?setup" onClick={(e) => { e.preventDefault(); setDetails(true); }}>Running this site? See what's wrong.</a>
+              </div>
             </div>
           )}
           {!blocked && !details && checks && !mathReady && <div className="small">The 3Blue1Brown style is unavailable right now; Illustrated still works.</div>}
