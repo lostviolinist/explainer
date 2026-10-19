@@ -9,7 +9,10 @@
  *
  * Illustrated motion graphics (motion / chart / text / the callouts of a diagram)
  * are hand-designed templates filled in by the model at plan time and drawn by
- * the composition: no model-written code, no sandbox, nothing to review.
+ * the composition: no model-written code, no sandbox, nothing to review. With
+ * ANIMATION_AUTHOR=model the model also writes each motion scene's animation
+ * as code around the scene's picture (the kit in packages/render), rendered in
+ * the sandbox and judged on frames; the template stays as the safety net.
  *
  * Code scenes (manim / three, the 3Blue1Brown style): the model writes Manim or
  * React Three Fiber code, the animator sandbox renders it, sampled frames are
@@ -23,8 +26,8 @@ import { AnimSpec, ChartSpec, MotionSpec, PointsSpec, RenderSpec, SceneAssets, Q
 import { generateStill, animateStill, generateClip, generateSpeech, HedraError, type GenOutcome } from "@explainer/hedra";
 import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
-import type { Engine } from "../providers/animator.js";
-import { MANIM_RULES, threeRules, narrationTimeline, stripFences, fallbackManim } from "./engines.js";
+import type { Engine, OverlayImage } from "../providers/animator.js";
+import { MANIM_RULES, threeRules, motionRules, narrationTimeline, stripFences, fallbackManim } from "./engines.js";
 import { CHART_PLAN_RULES, DIAGRAM_CALLOUT_RULES, MOTION_PLAN_RULES, POINTS_PLAN_RULES, pictureRules } from "./templates.js";
 
 /** What the planner returns, by scene type: a template filled in, a picture prompt, or both. */
@@ -68,7 +71,15 @@ export function tidySounds(sounds: SoundCue[], durationS: number): SoundCue[] {
   return out;
 }
 
-const isCodeScene = (t: Scene["visualType"]): t is Engine => t === "manim" || t === "three";
+/** Scenes whose visual is code the model writes (the 3Blue1Brown style); a motion scene is a template unless the operator opts in. */
+const isCodeScene = (t: Scene["visualType"]): t is "manim" | "three" => t === "manim" || t === "three";
+
+/** Where the frame sampler takes its frames (mirrors packages/render sampleTimes), so a reviewer knows the times. */
+const sampleTimes = (durationS: number, count: number) => {
+  const inset = Math.min(0.5, durationS / 10);
+  const span = durationS - 2 * inset;
+  return count === 1 ? [inset + span / 2] : Array.from({ length: count }, (_, i) => inset + (span * i) / (count - 1));
+};
 
 /** Where the parts of a still are, so callouts can point at them (0–1 in the image, origin top-left). */
 export const Located = z.object({
@@ -254,13 +265,24 @@ export async function renderSceneAssets(ctx: Ctx, brief: Brief, plan: ScenePlan,
   if (scene.visualType === "motion" || scene.visualType === "chart" || scene.visualType === "text") {
     const kind = scene.render?.animSpec.kind ?? "none";
     qa.push({ check: "visual-matches-direction", passed: kind !== "none", score: null, attempts: 0, fallback: kind === "none" ? "no template planned; the scene shows its captions only" : null, notes: `template: ${kind}` });
+    let picture: MirroredAsset | null = null;
     if (scene.visualType === "motion" && scene.render?.hedraPrompt) {
       const { still, bestRejected } = await drawStill(ctx, brief, scene, scene.render.hedraPrompt, refs, "still:0", qa);
-      const picture = still ?? bestRejected?.asset ?? null;
+      picture = still ?? bestRejected?.asset ?? null;
       if (picture) {
         visuals.push({ asset: picture, role: "still" });
         if (!still) qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 2, fallback: "kept the best rejected still", notes: null });
         await progress(`drew scene ${scene.id.slice(1)}`, 0.6, { sceneId: scene.id, stillUrl: picture.url });
+      }
+    }
+    // Opt-in: the model writes the animation itself, around the picture. The template is already
+    // planned, so when no attempt passes the review the scene is drawn from it as usual.
+    if (scene.visualType === "motion" && ctx.modelAnimation) {
+      const animated = await modelAnimation(ctx, brief, scene, audio, qa, cast, picture);
+      if (animated) {
+        visuals.push({ asset: animated.asset, role: "animation" });
+        await progress(`animated scene ${scene.id.slice(1)}`, 0.9, { sceneId: scene.id, clipUrl: animated.asset.url });
+        return SceneAssets.parse({ projectId: brief.projectId, sceneId: scene.id, audio, visuals, sounds: animated.sounds, qa });
       }
     }
     await progress(`built scene ${scene.id.slice(1)} (${kind})`, 0.9, { sceneId: scene.id });
@@ -408,6 +430,26 @@ async function locateCallouts(ctx: Ctx, scene: Scene, still: MirroredAsset, qa: 
   }
 }
 
+/**
+ * ANIMATION_AUTHOR=model: the model writes this motion scene's animation as code
+ * on the kit, with the scene's picture to place. Null when the sandbox isn't
+ * running or no attempt passed the review, and the template is shown instead.
+ */
+async function modelAnimation(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], qa: QaResult[], cast: CastMember[], picture: MirroredAsset | null): Promise<CodeRender | null> {
+  if (!(await ctx.animator.available()).includes("motion")) {
+    qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 0, fallback: "template kept", notes: "model-written animation: the animation sandbox is not running" });
+    return null;
+  }
+  let image: OverlayImage | undefined;
+  if (picture) {
+    const res = await fetch(picture.url).catch(() => null);
+    if (res?.ok) image = { data: new Uint8Array(await res.arrayBuffer()), type: res.headers.get("content-type") ?? picture.contentType };
+  }
+  const animated = await renderCodeScene(ctx, brief, scene, audio, qa, cast, { engine: "motion", image });
+  if (!animated) qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 3, fallback: "template kept", notes: "model-written animation did not pass the review; the template is shown" });
+  return animated;
+}
+
 // ---------------------------------------------------------------------------
 // Code scenes
 
@@ -419,11 +461,16 @@ function codeBackground(brief: Brief): string {
 const ENGINE_LOOK: Record<Engine, string> = {
   manim: "Manim, in the 3Blue1Brown style",
   three: "three.js (3D)",
+  motion: "flat 2D motion graphics in a flat-illustration house style, built around an illustration of the scene's subject",
 };
 
-async function scoreCode(ctx: Ctx, scene: Scene, engine: Engine, frames: string[]) {
+async function scoreCode(ctx: Ctx, scene: Scene, engine: Engine, frames: string[], times?: number[]) {
+  // Motion scenes are judged on motion too: frames at known times, and change between them.
+  const timing = times
+    ? ` The ${frames.length} frames are in time order, at t = ${times.map((x) => x.toFixed(1)).join(", ")} s of the narration below. Judge the MOTION as well: does each frame show what is being said at that moment, and is something visibly different between consecutive frames (nothing static for long)? Count an empty frame, or one still showing an earlier moment, against matchesDirection. The illustration itself is given; judge what is drawn around it.`
+    : "";
   return ctx.llm.vision({
-    system: `Score frames from an animated explainer scene: ${ENGINE_LOOK[engine]}. matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no text spilling out of its box, no overlapping text or objects, good contrast, the bottom-right corner clear for captions? clarity: would a first-time viewer understand what it shows at a glance? One subject and a few supporting things score high; a frame crowded with boxes, arrows and labels scores low even if it is "correct". hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix, and what to remove.`,
+    system: `Score frames from an animated explainer scene: ${ENGINE_LOOK[engine]}.${timing} matchesDirection: does it show what the direction describes? styleMatch: is it clean and readable: nothing cut off at the frame edges, no text spilling out of its box, no overlapping text or objects, good contrast, the bottom-right corner clear for captions? clarity: would a first-time viewer understand what it shows at a glance? One subject and a few supporting things score high; a frame crowded with boxes, arrows and labels, or an abstract diagram standing in for the real thing, scores low even if it is "correct". hasText: any legible text (fine for equations and short labels). Scores 0–1. In notes, say concretely what to fix, and what to remove.`,
     user: `Direction: ${scene.visualDirection}\nNarration: ${scene.narration}`,
     imageUrls: frames,
     schema: VisionScore,
@@ -437,13 +484,13 @@ type CodeRender = { asset: MirroredAsset; sounds: SoundCue[] };
  * notes back. Keeps the best render that worked. Manim scenes that never pass
  * use a plain safe scene; a 3D scene returns null so the caller can demote it.
  */
-async function renderCodeScene(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], qa: QaResult[], cast: CastMember[] = []): Promise<CodeRender | null> {
-  const engine = scene.visualType as Engine;
+async function renderCodeScene(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], qa: QaResult[], cast: CastMember[] = [], opts: { engine?: Engine; image?: OverlayImage } = {}): Promise<CodeRender | null> {
+  const engine = opts.engine ?? (scene.visualType as Engine);
   const progress = makeProgress(ctx, brief.projectId, "visuals");
   const n = scene.id.slice(1);
   const durationS = +(audio.durationS + VIDEO_TIMING.sceneTailS).toFixed(2);
   const background = codeBackground(brief);
-  const rules = (engine === "manim" ? MANIM_RULES : threeRules(brief.style, brief.background))
+  const rules = (engine === "manim" ? MANIM_RULES : engine === "motion" ? motionRules(brief.background) : threeRules(brief.style, brief.background))
     .replaceAll("{DURATION}", durationS.toFixed(1))
     .replaceAll("{BUDGET}", Math.max(1, durationS - 0.5).toFixed(1))
     .replaceAll("{FRAMES}", String(Math.round(durationS * 30)));
@@ -453,16 +500,17 @@ async function renderCodeScene(ctx: Ctx, brief: Brief, scene: Scene, audio: Scen
     scene.onScreenTerms.length ? `Terms that may appear as labels: ${scene.onScreenTerms.join(", ")}` : "",
     cast.length ? `Recurring cast (draw these exactly so, the same as in every other scene):\n${castLines(cast)}` : "",
     `Narration timeline (seconds from the start of the scene):\n${narrationTimeline(scene.narration, audio.words)}`,
+    engine === "motion" ? (opts.image ? "The scene's picture, an illustration of what is seen above, is ready for <Picture />." : "No picture could be drawn for this scene, so <Picture /> shows nothing: draw the subject yourself, simply.") : "",
   ].filter(Boolean).join("\n\n");
 
   let feedback = "";
   let best: { asset: MirroredAsset; score: number; sounds: SoundCue[] } | null = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const what = engine === "manim" ? "Manim scene" : "3D scene";
+    const what = engine === "manim" ? "Manim scene" : engine === "three" ? "3D scene" : "animation";
     await progress(`${attempt === 1 ? "writing" : "fixing"} the ${what} for scene ${n}`, 0.3 + 0.15 * attempt);
-    const { code: raw, sounds } = await ctx.llm.json({ system: rules, user: brief0 + feedback, schema: SceneCode, maxTokens: 6000 });
+    const { code: raw, sounds } = await ctx.llm.json({ system: rules, user: brief0 + feedback, schema: SceneCode, maxTokens: engine === "motion" ? 8000 : 6000 });
     const code = stripFences(raw);
-    const r = await ctx.animator.render(engine, code, durationS, background);
+    const r = await ctx.animator.render(engine, code, durationS, background, opts.image);
     if (!r.ok) {
       qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: attempt, fallback: null, notes: `${engine} code failed: ${r.error.slice(-300)}` });
       feedback = `\n\nYOUR PREVIOUS CODE FAILED. Fix it and return the full code.\n--- code ---\n${code}\n--- error ---\n${r.error.slice(-1500)}`;
@@ -471,9 +519,10 @@ async function renderCodeScene(ctx: Ctx, brief: Brief, scene: Scene, audio: Scen
     const name = `${scene.id}-${engine}-${attempt}.mp4`;
     const asset = await ctx.mirror.put(brief.projectId, name, r.video, "video/mp4", { width: 1920, height: 1080, durationMs: Math.round(durationS * 1000) });
     const mirrored: MirroredAsset = { ...asset, model: engine, costUsd: 0 };
-    const frames = await ctx.frames.sample(mirrored.url, 3).catch(() => null);
+    const nFrames = engine === "motion" ? 5 : 3;
+    const frames = await ctx.frames.sample(mirrored.url, nFrames).catch(() => null);
     const score = frames
-      ? await scoreCode(ctx, scene, engine, frames)
+      ? await scoreCode(ctx, scene, engine, frames, engine === "motion" ? sampleTimes(durationS, frames.length) : undefined)
       : { matchesDirection: 0.5, styleMatch: 0.5, clarity: 0.5, hasText: true, notes: "frames could not be sampled" };
     const s = Math.min(score.matchesDirection, score.styleMatch, score.clarity);
     const ok = score.matchesDirection >= PASS - 0.1 && score.styleMatch >= PASS && score.clarity >= CLEAR;

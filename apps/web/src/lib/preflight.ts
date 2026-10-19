@@ -7,7 +7,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { HedraClient } from "@explainer/hedra";
-import { OpenAILLM, AnthropicLLM, ExaSearch, loadHouseStyle, llmProvider, llmModelName } from "@explainer/pipeline";
+import { OpenAILLM, AnthropicLLM, ExaSearch, loadHouseStyle, llmProvider, llmModelName, modelWritesAnimation } from "@explainer/pipeline";
 import { ensureRenderBrowser } from "@explainer/render";
 import { db } from "./db";
 
@@ -160,7 +160,9 @@ export async function runPreflight(): Promise<Check[]> {
 
     run(WORKER_CHECK, "Start the `inngest` service: docker compose up. If it is up but hasn't found the app: docker compose restart inngest, then `docker compose logs inngest web` if runs still don't start.", worker),
     run(MANIM_CHECK, "Start the `manim` service: docker compose up --build, then `docker compose logs manim` if it keeps failing.", () => sandbox("MANIM_URL", "the 3Blue1Brown style is off (Illustrated videos don't need it)")),
-    run(THREE_CHECK, "Start the `three` service: docker compose up --build.", () => sandbox("THREE_URL", "no 3D scenes in the 3Blue1Brown style; nothing else uses it")),
+    run(THREE_CHECK, "Start the `three` service: docker compose up --build, then `docker compose logs three` if it keeps failing.", () =>
+      sandbox("THREE_URL", modelWritesAnimation() ? "ANIMATION_AUTHOR=model is set, but without this sandbox Illustrated scenes use the templates" : "no 3D scenes in the 3Blue1Brown style; nothing else uses it"),
+    ),
   ]);
 }
 

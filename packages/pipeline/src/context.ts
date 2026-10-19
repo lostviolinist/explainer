@@ -46,7 +46,14 @@ export interface Ctx {
   animator: Animator;
   store: ArtifactStore;
   style: HouseStyle;
+  /** ANIMATION_AUTHOR=model: the language model writes each Illustrated motion scene's animation (template as the fallback). */
+  modelAnimation?: boolean;
   now(): string;
+}
+
+/** Whether the language model writes the Illustrated animation itself (ANIMATION_AUTHOR=model) rather than filling the templates. */
+export function modelWritesAnimation(env: NodeJS.ProcessEnv = process.env): boolean {
+  return /^(model|claude|on|1|true|yes)$/i.test((env.ANIMATION_AUTHOR ?? "").trim());
 }
 
 export function makeProgress(ctx: Ctx, projectId: string, stage: Stage) {
@@ -101,8 +108,9 @@ export function ctxFromEnv(store: ArtifactStore, frames: FrameSampler): Ctx {
     // transcription (same key), else estimated from the text.
     aligner: new FallbackAligner(env.ALIGNMENT_URL ? new HttpAligner(env.ALIGNMENT_URL) : env.OPENAI_API_KEY ? new OpenAIAligner(env.OPENAI_API_KEY) : noTranscription, (why) => console.warn(`[align] estimated word timing: ${why}`)),
     frames,
-    // Sandboxes for model-written code: Manim, and three.js for 3D scenes (3Blue1Brown style). Flat scenes need neither.
-    animator: new HttpAnimator({ manim: env.MANIM_URL || undefined, three: env.THREE_URL || undefined }),
+    // The Remotion sandbox (THREE_URL) renders 3D scenes and, when the operator opts in, model-written flat animation.
+    animator: new HttpAnimator({ manim: env.MANIM_URL || undefined, three: env.THREE_URL || undefined, motion: env.THREE_URL || undefined }),
+    modelAnimation: modelWritesAnimation(env),
     store,
     style: loadHouseStyle(),
     now: () => new Date().toISOString(),

@@ -91,7 +91,7 @@ export function Explainer(props: ExplainerProps) {
         const coded = s.visuals.some((v) => v.role === "animation");
         const inner = (
           <>
-            {!drawsOwnPicture(s) && <Visual scene={s} />}
+            {(coded || !drawsOwnPicture(s)) && <Visual scene={s} />}
             {!coded && <Motion scene={s} background={props.background} sfx={sfx} />}
             <Captions words={s.words} narration={s.narration} background={props.background} />
           </>

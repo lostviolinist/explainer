@@ -23,6 +23,7 @@ Good to know:
 - **Something failed?** http://localhost:8288 shows every step of every run with its logs and errors.
 - **A run sits at "Starting…" and never moves?** The background worker (Inngest, http://localhost:8288) isn't running or hasn't found the app. The setup page shows it as "Background worker"; `docker compose restart inngest` usually fixes it, and `docker compose logs inngest web` says why if not.
 - **Which model writes the videos?** Whichever key you set: `ANTHROPIC_API_KEY` for Claude Opus 5.5, otherwise `OPENAI_API_KEY`. With both set, Claude writes and OpenAI only transcribes the narration so captions land on the exact word (without it, timing is estimated). The setup page names the model in use.
+- **Want the model to animate, not just fill in templates?** Set `ANIMATION_AUTHOR=model` in `.env` and restart. Each Illustrated motion scene is then written by the model as code on the flat toolkit, around the picture Hedra drew for it, rendered in the `three` sandbox and judged on frames; a scene whose animation fails the review falls back to its template. It is an experiment: slower and costlier per video, and meant for Claude. Leave it blank for the templates.
 - **The 3Blue1Brown style shows "not available"?** Its Manim sandbox isn't running: `docker compose logs manim`. Illustrated videos don't need any sandbox.
 
 Keys and credits are the only things that can stop a run. The app checks them quietly before it starts one.
@@ -81,7 +82,7 @@ The same things look the same in every scene. Early on, the script names the thr
 
 ### Two styles
 
-- **Illustrated**: the flat house style — a limited palette, simple shapes, no outlines, generous space — animated. Pictures come from Hedra; the motion comes from the templates above. Nothing a model wrote ever runs.
+- **Illustrated**: the flat house style — a limited palette, simple shapes, no outlines, generous space — animated. Pictures come from Hedra; the motion comes from the templates above. Nothing a model wrote ever runs, unless the operator opts in (`ANIMATION_AUTHOR=model`): then the model writes each motion scene's animation as code on a small flat toolkit (shapes, labels that size themselves, icons, a camera, the scene's picture as an element), it is rendered in the sandbox with no keys and no internet, frames are judged against the narration, and a scene that never passes is drawn from its template instead.
 - **3Blue1Brown**: scenes written as [Manim](https://www.manim.community/) code — equations, graphs, geometry, built up step by step on black — and rendered in a sandbox with no keys and no internet, because here the model does write the code (it has seen a great deal of Manim). No generated pictures at all, so it costs a fraction of an illustrated video.
 
 ### Building the video

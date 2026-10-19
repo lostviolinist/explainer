@@ -363,7 +363,8 @@ function RoughCut({ live, total, finished }: { live: LiveState; total: number; f
 
 function sceneStatus(s: LiveScene): { label: string; tone: "wait" | "work" | "ready" } {
   if (s.done) return { label: "Ready", tone: "ready" };
-  if (PROGRAMMATIC.has(s.visualType)) return s.audioUrl ? { label: "Built in the edit", tone: "ready" } : { label: "Recording voice", tone: "work" };
+  // A motion scene the model animated itself (ANIMATION_AUTHOR=model) arrives as a clip; otherwise the template is drawn in the edit.
+  if (PROGRAMMATIC.has(s.visualType)) return s.clipUrl ? { label: "Ready", tone: "ready" } : s.audioUrl ? { label: "Built in the edit", tone: "ready" } : { label: "Recording voice", tone: "work" };
   if (CODED.has(s.visualType)) return s.clipUrl ? { label: "Ready", tone: "ready" } : { label: s.audioUrl ? (s.visualType === "three" ? "Building 3D scene" : "Writing animation") : "Recording voice", tone: "work" };
   if (!s.stillUrl) return { label: s.audioUrl ? "Drawing" : "Recording voice", tone: "work" };
   if (MOVING.has(s.visualType) && !s.clipUrl) return { label: "Animating", tone: "work" };

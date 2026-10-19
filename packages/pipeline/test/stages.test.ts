@@ -14,6 +14,7 @@ import { coverPoint } from "../src/stages/visuals.ts";
 import { evenSplit, rescale } from "../src/providers/alignment.ts";
 import type { LLM } from "../src/providers/llm.ts";
 import { noAnimator } from "../src/providers/animator.ts";
+import { motionRules } from "../src/stages/engines.ts";
 import type { Brief, ResearchBrief, Scene, ScenePlan, SceneAssets } from "@explainer/schemas";
 
 const PID = "11111111-1111-4111-8111-111111111111";
@@ -395,6 +396,87 @@ test("a split fills the frame on its own: no picture is drawn for it", async () 
   assert.equal(render.hedraPrompt, null);
   const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, { ...motionScene, render }, codeAudio);
   assert.deepEqual(out.visuals, []);
+});
+
+const kitCode = 'import { Stage, Picture, Label, Dots, curve } from "./Kit";\nexport default function Scene() { return <Stage><Picture at={0} /><Label x={900} y={300} at={1}>Air rises</Label><Dots along={curve(900, 700, 1700, 300)} at={2} /></Stage>; }';
+const rainSteps = { kind: "steps", title: "How rain happens", cycle: false, steps: [{ label: "Sun warms ground", sub: null, icon: "sun", cue: "sun" }, { label: "Air rises", sub: null, icon: "cloud", cue: "rises" }, { label: "Rain falls", sub: null, icon: "drop", cue: "rain" }] };
+
+/** The opt-in: a picture is drawn, then the model writes the animation around it in the motion sandbox. */
+function modelAnimationCtx(llm: LLM, render: (attempt: number) => { ok: true } | { ok: false; error: string }) {
+  const ctx = withStill(ctxWith(llm));
+  ctx.modelAnimation = true;
+  const renders: { engine: string; code: string; image?: { type: string; bytes: number } }[] = [];
+  ctx.animator = {
+    available: async () => ["three", "motion"],
+    render: async (engine, code, _d, _b, image) => {
+      renders.push({ engine, code, image: image ? { type: image.type, bytes: image.data.length } : undefined });
+      const r = render(renders.length);
+      return r.ok ? { ok: true, video: new Uint8Array([1, 2, 3]) } : r;
+    },
+  } satisfies Animator;
+  (ctx.mirror as any).put = async (_p: string, name: string, bytes: Uint8Array, contentType: string, meta: any) => ({ hedraAssetId: `local:${name}`, url: `http://localhost:9000/explainer-assets/${name}`, contentType, width: 1920, height: 1080, durationMs: meta.durationMs, bytes: bytes.length });
+  ctx.frames = { sample: async () => ["data:image/jpeg;base64,AAA", "data:image/jpeg;base64,AAA", "data:image/jpeg;base64,AAA", "data:image/jpeg;base64,AAA", "data:image/jpeg;base64,AAA"] };
+  return { ctx, renders };
+}
+
+/** The picture is fetched from the mirror to hand to the sandbox; here the mirror is a fake. */
+async function withPictureFetch<T>(run: () => Promise<T>): Promise<T> {
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(new Uint8Array([9, 9, 9]), { headers: { "content-type": "image/png" } })) as typeof fetch;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+test("ANIMATION_AUTHOR=model: the model writes the motion scene's animation around its picture, in the sandbox, judged on frames", async () => {
+  const llm = scriptedLLM([
+    [/choosing a template/, { animSpec: rainSteps, hedraPrompt: "Flat vector illustration, detailed. The sun over a field. No text, no labels." }],
+    [/You write one scene of a flat-illustration explainer/, { code: kitCode, sounds: [{ at: 1, kind: "pop" }] }],
+  ]);
+  const { ctx, renders } = modelAnimationCtx(llm, () => ({ ok: true }));
+  const out = await withPictureFetch(async () => {
+    const render = await planScene(ctx, briefFor(120), motionScene);
+    return renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, { ...motionScene, render }, codeAudio);
+  });
+  assert.deepEqual(out.visuals.map((v) => v.role), ["still", "animation"], "the picture stays (poster, thumbnails); the animation is the scene's visual");
+  assert.equal(renders.length, 1);
+  assert.equal(renders[0]!.engine, "motion");
+  assert.deepEqual(renders[0]!.image, { type: "image/png", bytes: 3 }, "the picture goes to the sandbox for <Picture>");
+  assert.deepEqual(out.sounds, [{ at: 1, kind: "pop" }]);
+  assert.ok((llm as any).calls.some((c: string) => /^You write one scene of a flat/.test(c)), "the code was asked for with the motion rules");
+  assert.match(motionRules("light"), /<Picture \/>/, "the rules tell the model to place the picture");
+  assert.ok(out.qa.some((q) => q.passed && q.attempts === 1 && q.check === "visual-matches-direction"), "the reviewer passed the first attempt");
+  assert.equal((ctx.store as MemoryStore).events.at(-1)?.message, "animated scene 2");
+});
+
+test("when the model's animation never passes, the motion scene is drawn from its template as if the opt-in were off", async () => {
+  const llm = scriptedLLM([
+    [/choosing a template/, { animSpec: rainSteps, hedraPrompt: "Flat vector illustration, detailed. The sun over a field. No text, no labels." }],
+    [/You write one scene of a flat-illustration explainer/, { code: kitCode, sounds: [] }],
+  ]);
+  const { ctx, renders } = modelAnimationCtx(llm, () => ({ ok: false, error: "The code did not compile: Dots is not exported" }));
+  const out = await withPictureFetch(async () => {
+    const render = await planScene(ctx, briefFor(120), motionScene);
+    return renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, { ...motionScene, render }, codeAudio);
+  });
+  assert.equal(renders.length, 3, "three attempts, the error fed back each time");
+  assert.deepEqual(out.visuals.map((v) => v.role), ["still"]);
+  assert.equal(out.animSpec, null, "the plan's template is the final spec");
+  assert.ok(out.qa.some((q) => q.fallback === "template kept"));
+  assert.equal((ctx.store as MemoryStore).events.at(-1)?.message, "built scene 2 (steps)");
+});
+
+test("without the sandbox the opt-in changes nothing: the template is used and nothing is written", async () => {
+  const llm = scriptedLLM([[/choosing a template/, { animSpec: rainSteps, hedraPrompt: "Flat vector illustration, detailed. The sun over a field. No text, no labels." }]]);
+  const { ctx, renders } = modelAnimationCtx(llm, () => ({ ok: true }));
+  ctx.animator = { ...ctx.animator, available: async () => ["three"] };
+  const render = await planScene(ctx, briefFor(120), motionScene);
+  const out = await renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, { ...motionScene, render }, codeAudio);
+  assert.equal(renders.length, 0);
+  assert.deepEqual(out.visuals.map((v) => v.role), ["still"]);
+  assert.ok(out.qa.some((q) => q.fallback === "template kept" && /sandbox/.test(q.notes ?? "")));
 });
 
 test("the Illustrated plan is kept illustrated: the hook is a picture, text is for the recap, a third are pictures", () => {

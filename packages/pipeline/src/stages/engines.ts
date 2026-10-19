@@ -3,7 +3,9 @@
  * rules distil the ManimCE best practices from github.com/adithya-s-k/manim_skill
  * (MIT) to what makes generated code fail or look wrong; the three.js rules keep
  * scenes renderable in the sandbox (Remotion's frame clock, no network, allowed
- * imports only). The Illustrated style writes no code: see templates.ts.
+ * imports only). The Illustrated style fills templates (templates.ts) unless the
+ * operator opts in to model-written animation (ANIMATION_AUTHOR=model), whose
+ * rules are motionRules below: the kit in packages/render/src/animator/kit.
  */
 import type { VideoStyle } from "@explainer/schemas";
 
@@ -121,4 +123,59 @@ export function fallbackManim(narration: string, terms: string[]): string {
             self.play(LaggedStart(*[FadeIn(t, shift=UP * 0.2) for t in group], lag_ratio=0.3), run_time=2)
         self.play(Circumscribe(title, color=YELLOW), run_time=1.5)
 `;
+}
+
+const HOUSE = {
+  light: { bg: "warm off-white #F6F3EC", ink: "#1B2235" },
+  dark: { bg: "deep navy #0B1C3F", ink: "#F6F3EC" },
+};
+
+const KIT_ICONS = "sun, moon, eye, molecule, leaf, person, people, cloud, gear, clock, drop, star, box, heart, bulb, earth, bolt, arrow, check, cross, question, flask, wave, mountain, book, house, tree, brain, rocket, magnet, battery, thermometer, magnifier, coin, dna";
+
+/**
+ * Flat-style motion graphics written by the model on the kit
+ * (packages/render/src/animator/kit), built around the scene's picture: the
+ * model directs what enters, moves and leaves, and when; the kit does the
+ * easing, the draw-on, the camera and the exits.
+ */
+export function motionRules(background: "dark" | "light"): string {
+  const h = HOUSE[background];
+  return `You write one scene of a flat-illustration explainer as a React motion-graphics module, rendered frame by frame with Remotion at 1920×1080, 30 fps. The toolkit "./Kit" does for flat scenes what Manim does for 3Blue1Brown scenes: you say what appears, moves and leaves, and when; the kit does the easing, the draw-on, the camera and the exits.
+
+OUTPUT: a TSX module \`export default function Scene()\` whose root element is <Stage>. Return only the code: no explanations, no markdown fences. Times are seconds from the start of the scene; the scene lasts {DURATION} s ({FRAMES} frames).
+
+IMPORTS: only from "./Kit", "react", "remotion" and "@remotion/paths". No other modules, images, fonts, network, fetch or Math.random.
+
+THE PICTURE: an illustration of this scene's subject has already been painted in the house style. Place it with <Picture /> and build the explanation around it: it is the concrete thing; your drawing is the mechanism, the comparison, the quantity, the sequence. Two layouts work:
+- Beside: <Picture at={0} /> fills the left panel (x 120–760, y 150–930); your animation lives to its right, x from 860 to 1824, y from 120 to 960.
+- On top: <Picture full at={0} /> fills the frame and you point at parts of it (a <Circumscribe>, a <Connect> from a <Label> in an empty area, a <Highlight>); strokes and translucent fills only, never opaque shapes over the picture.
+The picture must be on screen from the start; never draw the subject yourself when the picture already shows it.
+
+THE KIT (import what you use from "./Kit"):
+- <Stage camera={[{ at, x, y, zoom, over }]}> the root. Camera keys move the view: zoom 1 shows the whole frame centred on (960, 540); to frame a detail, zoom ≈ 1.5 centred on it, over 2 s; return to zoom 1 before the end. <Fixed> keeps its children (titles, legends) still while the camera moves.
+- <Picture x y w h r full at over until enter exit /> the scene's picture, cover-fitted into a rounded box (defaults to the left panel).
+- Paths, in frame pixels: circle(cx, cy, r), ellipse(cx, cy, rx, ry), rect(x, y, w, h, r), line(x1, y1, x2, y2), arrow(x1, y1, x2, y2), curve(x1, y1, x2, y2, bow), polygon([[x, y], ...]).
+- <Shape d fill stroke width at over until enter exit opacity /> one path on the timeline. enter: "draw" (default: the stroke draws on, then the fill arrives), "fade", "grow", "pop" (overshoot), "slide", "none". exit at \`until\`: "fade" (default), "shrink", "undraw".
+- <Icon name x y size at over enter until fill stroke /> line icons: ${KIT_ICONS}. Give fill for a solid look.
+- <Group x y origin at enter exit until> several shapes entering and leaving together (origin is the point it grows from).
+- <Label x y anchor color ink size at until>text</Label> for ALL single labels: it sizes itself to its words (never draw a rect behind text; SVG <text> is rejected). anchor "start" | "middle" | "end"; color "none" for plain text (ink ${h.ink} on this background). ≤ 4 words, 36–52 px.
+- <Row x y anchor items={["one", "two", ...]} gap at lag until emphasize={[{ index, at, until }]} /> a row of words as self-sizing pills laid out by the browser (they can never overlap or spill); items pop in one after another; emphasize lights one up while its words are spoken. <Column> is the same, stacked. Never place a list of pills by hand.
+- <Move from to at over> or <Move path at over> moves its children (draw them at \`from\` / the path's start).
+- <Transform from to at over fill stroke width /> one path becomes another from \`at\`; show the first shape until then with <Shape d={from} until={at} exit="none" />.
+- <Indicate at origin scale> a brief grow-and-back of its children; <Circumscribe x y w h at hold stroke /> a ring draws around a box, holds, undraws; <Flash x y at /> a burst; <Highlight x y w h at until /> dims everything but a box (spotlight).
+- <Connect from to at over head bow /> a line or arrow draws on between two points; <Dots along count speed fill at until /> dots flowing along a path; <Bar x y w h value max fill at over />; <Counter from to at over x y suffix />.
+- useT() the current second; prog(t, at, over, ease) 0→1 for anything custom; PALETTE.yellow/blue/red/green/ink.
+
+HOW TO DIRECT IT (what makes a scene feel built, not shown)
+- Clarity first: a first-time viewer must get the scene at a glance. At most 14 drawn elements in the whole scene besides the picture (a <Row> counts as one; more is rejected): one idea, a few supporting things, labels only for what the narration names. Draw things, not diagrams of things: a word is a word card, a person is a person, light is a moving dot, heat is a glow. Boxes-and-arrows only when the narration itself is about boxes and arrows.
+- Follow the narration timeline: a thing enters within 0.3 s of its words; what is being talked about is the thing that moves; everything else holds or dims.
+- Show before you name: the shape enters (draw / grow), its Label pops about 0.4 s later.
+- Build, don't cut: add to what is on screen; Transform one thing into the next; Move things instead of replacing them. Fade out (until) only what is no longer needed.
+- Group related changes at the same \`at\`; unrelated ones in sequence. over 0.5–2 s. Use "pop" sparingly.
+- The subject of each sentence reacts at its cue: Indicate / Circumscribe / Flash / a colour change, and the rest dims (Highlight).
+- Camera: zoom to the detail when the narration goes into detail, back out for the whole; one or two moves per scene, never constant drifting.
+- Comparisons side by side; quantities as Bars or Counters; sequences as 1-2-3 Labels lighting up in order; flow as Dots or a Move along a path.
+- Something changes every 1–2 s. End on the key idea alone, camera back at zoom 1.
+
+LOOK: the ${h.bg} background is already painted. Flat shapes in the house palette (ink ${h.ink}, yellow #F2C14E, blue #8FB8E8, red #E4573D, green #5FA36B); rounded corners; strokes 6–10; generous space; the recurring cast drawn the same way every time (same colour for the same thing). Keep inside x ∈ [80, 1840], y ∈ [80, 1000]; nothing in the caption box (x > 1000 and y > 840); moving things stay inside the frame at every moment.`;
 }
