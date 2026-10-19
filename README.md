@@ -6,7 +6,7 @@ That's the whole interface. There is no editor, no template picker, no "review y
 
 ## Running it
 
-You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) and three API keys: [Hedra](https://www.hedra.com/) (pictures, clips, voice, music), [OpenAI](https://platform.openai.com/) (the writing and the checking), and [Exa](https://exa.ai/) (web search).
+You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) and three API keys: [Hedra](https://www.hedra.com/) (pictures, clips, voice, music), a language model — [Anthropic](https://console.anthropic.com/) for Claude Opus 5.5 or [OpenAI](https://platform.openai.com/) — and [Exa](https://exa.ai/) (web search).
 
 ```bash
 cp .env.example .env            # put the three keys in
@@ -22,6 +22,7 @@ Good to know:
 - **To update:** `git pull`, then `docker compose up --build`. To stop everything: `docker compose down`.
 - **Something failed?** http://localhost:8288 shows every step of every run with its logs and errors.
 - **A run sits at "Starting…" and never moves?** The background worker (Inngest, http://localhost:8288) isn't running or hasn't found the app. The setup page shows it as "Background worker"; `docker compose restart inngest` usually fixes it, and `docker compose logs inngest web` says why if not.
+- **Which model writes the videos?** Whichever key you set: `ANTHROPIC_API_KEY` for Claude Opus 5.5, otherwise `OPENAI_API_KEY`. With both set, Claude writes and OpenAI only transcribes the narration so captions land on the exact word (without it, timing is estimated). The setup page names the model in use.
 - **The 3Blue1Brown style shows "not available"?** Its Manim sandbox isn't running: `docker compose logs manim`. Illustrated videos don't need any sandbox.
 
 Keys and credits are the only things that can stop a run. The app checks them quietly before it starts one.

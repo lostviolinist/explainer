@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import type { LiveScene, LiveState } from "@/lib/live";
 import { ask } from "@/app/actions";
 import { PendingButton, PendingNote } from "@/app/pending";
+import { MythQuiz } from "@/app/Quiz";
 
 type Preview = {
   hookLine?: string;
@@ -338,44 +339,6 @@ function FactCarousel({ facts }: { facts: LiveState["facts"] }) {
   );
 }
 
-function MythQuiz({ items }: { items: LiveState["quiz"] }) {
-  const [i, setI] = useState(0);
-  const [picked, setPicked] = useState<"myth" | "fact" | null>(null);
-  const [score, setScore] = useState({ right: 0, seen: 0 });
-  const q = items[i % items.length]!;
-  const pick = (a: "myth" | "fact") => {
-    if (picked) return;
-    setPicked(a);
-    setScore((s) => ({ right: s.right + (a === q.answer ? 1 : 0), seen: s.seen + 1 }));
-  };
-  return (
-    <section className="card quiz">
-      <div className="eyebrow">
-        Myth or fact? {score.seen > 0 && <span className="count">{score.right}/{score.seen}</span>}
-      </div>
-      <p className="statement">“{q.statement}”</p>
-      {!picked ? (
-        <div className="quiz-actions">
-          <button type="button" className="btn ghost" onClick={() => pick("myth")}>Myth</button>
-          <button type="button" className="btn ghost" onClick={() => pick("fact")}>Fact</button>
-        </div>
-      ) : (
-        <div className={`verdict appear ${picked === q.answer ? "right" : "wrong"}`}>
-          <strong>{picked === q.answer ? "Correct — " : "Not quite — "}it's a {q.answer}.</strong> {q.explanation}
-          {items.length > 1 && (
-            <button type="button" className="btn ghost small-btn" onClick={() => { setPicked(null); setI((x) => x + 1); }}>Next</button>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/**
- * The rough cut: the finished scenes, played back to back with their narration
- * and captions, while the final video (music, transitions, sound) still renders.
- * Nothing is rendered for this; it plays the scene assets straight from the bucket.
- */
 /**
  * The rough cut: the real composition, played in the browser with the scenes
  * that are finished so far (narration, captions, templates, transitions; the

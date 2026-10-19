@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { HedraClient, AssetMirror } from "@explainer/hedra";
 import type { ProgressEvent, Stage } from "@explainer/schemas";
 import { OpenAILLM, type LLM } from "./providers/llm.js";
+import { AnthropicLLM, claudeModel } from "./providers/anthropic.js";
 import { ExaSearch, type Search } from "./providers/search.js";
 import { FallbackAligner, HttpAligner, OpenAIAligner, type Aligner } from "./providers/alignment.js";
 import type { ArtifactStore } from "./providers/store.js";
@@ -62,6 +63,18 @@ export function maxVideoSeconds(): number {
   return Number.isFinite(v) && v >= 60 ? Math.min(480, Math.floor(v)) : 180;
 }
 
+/** Which language model runs the pipeline: Claude when an Anthropic key is set (or LLM_PROVIDER says so), else OpenAI. */
+export function llmProvider(env: NodeJS.ProcessEnv = process.env): "anthropic" | "openai" {
+  const chosen = env.LLM_PROVIDER?.toLowerCase();
+  if (chosen === "anthropic" || chosen === "openai") return chosen;
+  return env.ANTHROPIC_API_KEY ? "anthropic" : "openai";
+}
+
+/** The model the pipeline writes with, for the setup page and logs. */
+export function llmModelName(env: NodeJS.ProcessEnv = process.env): string {
+  return llmProvider(env) === "anthropic" ? claudeModel(env.LLM_MODEL) : env.LLM_MODEL || "gpt-6.1-sol";
+}
+
 export function ctxFromEnv(store: ArtifactStore, frames: FrameSampler): Ctx {
   const env = process.env;
   const need = (k: string) => {
@@ -69,8 +82,11 @@ export function ctxFromEnv(store: ArtifactStore, frames: FrameSampler): Ctx {
     if (!v) throw new Error(`${k} is not set`);
     return v;
   };
+  const provider = llmProvider(env);
+  // Word timing for captions is transcription, which stays with OpenAI (whisper); without that key it is estimated.
+  const noTranscription: Aligner = { align: async () => { throw new Error("OPENAI_API_KEY is not set, so the narration is not transcribed"); } };
   return {
-    llm: new OpenAILLM(need("OPENAI_API_KEY")),
+    llm: provider === "anthropic" ? new AnthropicLLM(need("ANTHROPIC_API_KEY")) : new OpenAILLM(need("OPENAI_API_KEY")),
     search: new ExaSearch(need("EXA_API_KEY")),
     hedra: new HedraClient({ apiKey: need("HEDRA_API_KEY"), baseUrl: env.HEDRA_API_BASE, webhookUrl: env.HEDRA_WEBHOOK_URL }),
     mirror: new AssetMirror({
@@ -83,7 +99,7 @@ export function ctxFromEnv(store: ArtifactStore, frames: FrameSampler): Ctx {
     }),
     // Word timing for captions and cues: a WhisperX-class service if configured, else OpenAI's
     // transcription (same key), else estimated from the text.
-    aligner: new FallbackAligner(env.ALIGNMENT_URL ? new HttpAligner(env.ALIGNMENT_URL) : new OpenAIAligner(need("OPENAI_API_KEY")), (why) => console.warn(`[align] estimated word timing: ${why}`)),
+    aligner: new FallbackAligner(env.ALIGNMENT_URL ? new HttpAligner(env.ALIGNMENT_URL) : env.OPENAI_API_KEY ? new OpenAIAligner(env.OPENAI_API_KEY) : noTranscription, (why) => console.warn(`[align] estimated word timing: ${why}`)),
     frames,
     // Sandboxes for model-written code: Manim, and three.js for 3D scenes (3Blue1Brown style). Flat scenes need neither.
     animator: new HttpAnimator({ manim: env.MANIM_URL || undefined, three: env.THREE_URL || undefined }),

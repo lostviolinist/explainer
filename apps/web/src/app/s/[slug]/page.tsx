@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
-import type { RenderResult, ScenePlan, ResearchBrief } from "@explainer/schemas";
+import type { Brief, RenderResult, ScenePlan, ResearchBrief } from "@explainer/schemas";
 import { db, schema } from "@/lib/db";
 import { latest } from "@/lib/store";
 import { toPublic } from "@/lib/public-urls";
+import { getLiveState } from "@/lib/live";
+import { AfterVideo } from "@/app/Quiz";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +14,12 @@ export default async function SharePage({ params }: { params: Promise<{ slug: st
   const { slug } = await params;
   const [project] = await db.select().from(schema.projects).where(eq(schema.projects.shareSlug, slug)).limit(1);
   if (!project || project.stage !== "done") notFound();
-  const [render, plan, research] = await Promise.all([
+  const [render, plan, research, brief, live] = await Promise.all([
     latest<RenderResult>(project.id, "render"),
     latest<ScenePlan>(project.id, "plan"),
     latest<ResearchBrief>(project.id, "research"),
+    latest<Brief>(project.id, "brief"),
+    getLiveState(project.id),
   ]);
   if (!render) notFound();
 
@@ -23,6 +27,7 @@ export default async function SharePage({ params }: { params: Promise<{ slug: st
     <main>
       <h1 className="question">{project.question}</h1>
       <video className="player" src={toPublic(render.videoUrl)} controls playsInline preload="metadata" />
+      {brief && <AfterVideo projectId={project.id} quiz={live.quiz} goal={brief.learningGoal} />}
       {research && (
         <section className="sources">
           <h2>Sources</h2>

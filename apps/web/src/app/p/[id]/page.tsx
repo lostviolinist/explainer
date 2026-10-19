@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
-import type { RenderResult, ScenePlan, ResearchBrief } from "@explainer/schemas";
+import type { Brief, RenderResult, ScenePlan, ResearchBrief } from "@explainer/schemas";
 import { db, schema } from "@/lib/db";
 import { latest } from "@/lib/store";
 import { getLiveState } from "@/lib/live";
 import { toPublic } from "@/lib/public-urls";
+import { videoCost } from "@/lib/gallery";
+import { AfterVideo } from "@/app/Quiz";
 import { react } from "@/app/actions";
 import { PendingButton, PendingNote } from "@/app/pending";
 import { Progress } from "./Progress";
@@ -35,7 +37,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  const [plan, research, live] = await Promise.all([latest<ScenePlan>(id, "plan"), latest<ResearchBrief>(id, "research"), getLiveState(id)]);
+  const [plan, research, live, brief, cost] = await Promise.all([latest<ScenePlan>(id, "plan"), latest<ResearchBrief>(id, "research"), getLiveState(id), latest<Brief>(id, "brief"), videoCost(id)]);
   const poster = toPublic(live.scenes.find((s) => s.stillUrl)?.stillUrl);
   const videoUrl = toPublic(render.videoUrl);
   const srtUrl = toPublic(render.srtUrl);
@@ -55,12 +57,17 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         <a className="btn ghost" href={srtUrl} download>Captions (.srt)</a>
         <PendingNote>Setting up a new video — the progress page opens in a moment.</PendingNote>
       </form>
+      {cost > 0 && (
+        <p className="small cost">This video cost ${cost.toFixed(2)} to make: search, writing, voice{project.style === "math" ? " and the checks" : ", pictures and the checks"}.</p>
+      )}
       <form action={react} className="followup">
         <input type="hidden" name="projectId" value={id} />
         <input type="hidden" name="reaction" value="follow-up" />
         <input name="followUp" placeholder="wait, why does…? (ask a follow-up)" maxLength={300} required />
         <PendingButton className="btn">Ask</PendingButton>
       </form>
+
+      {brief && <AfterVideo projectId={id} quiz={live.quiz} goal={brief.learningGoal} />}
 
       {research && (
         <section className="sources">

@@ -1,6 +1,7 @@
 export * from "./context.js";
 export * from "./inngest.js";
 export * from "./providers/llm.js";
+export * from "./providers/anthropic.js";
 export * from "./providers/search.js";
 export * from "./providers/alignment.js";
 export * from "./providers/store.js";

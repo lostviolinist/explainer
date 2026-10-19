@@ -7,7 +7,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { HedraClient } from "@explainer/hedra";
-import { OpenAILLM, ExaSearch, loadHouseStyle } from "@explainer/pipeline";
+import { OpenAILLM, AnthropicLLM, ExaSearch, loadHouseStyle, llmProvider, llmModelName } from "@explainer/pipeline";
 import { ensureRenderBrowser } from "@explainer/render";
 import { db } from "./db";
 
@@ -109,12 +109,23 @@ export async function runPreflight(): Promise<Check[]> {
       return "write and public read OK";
     }),
 
-    run("OpenAI", `Set OPENAI_API_KEY, make sure the account has credits (platform.openai.com → Billing) and access to the model in LLM_MODEL / LLM_VISION_MODEL. ${restart}`, async () => {
-      const llm = new OpenAILLM(need("OPENAI_API_KEY"));
-      const Ok = z.object({ ok: z.literal(true) });
-      await llm.json({ system: 'Reply with exactly {"ok": true}.', user: "ping", schema: Ok, maxTokens: 20 });
-      await llm.vision({ system: 'If you can see an image, reply with exactly {"ok": true}.', user: "ping", imageUrls: [PNG], schema: Ok });
-      return `${process.env.LLM_MODEL || "gpt-6.1-sol"}: JSON and image input OK`;
+    run(
+      "Language model",
+      llmProvider() === "anthropic"
+        ? `Set ANTHROPIC_API_KEY (console.anthropic.com) with credits and access to ${llmModelName()}; or set LLM_PROVIDER=openai. ${restart}`
+        : `Set OPENAI_API_KEY, make sure the account has credits (platform.openai.com → Billing) and access to the model in LLM_MODEL / LLM_VISION_MODEL; or set ANTHROPIC_API_KEY to use Claude. ${restart}`,
+      async () => {
+        const llm = llmProvider() === "anthropic" ? new AnthropicLLM(need("ANTHROPIC_API_KEY")) : new OpenAILLM(need("OPENAI_API_KEY"));
+        const Ok = z.object({ ok: z.literal(true) });
+        await llm.json({ system: 'Reply with exactly {"ok": true}.', user: "ping", schema: Ok, maxTokens: 20, effort: "low" });
+        await llm.vision({ system: 'If you can see an image, reply with exactly {"ok": true}.', user: "ping", imageUrls: [PNG], schema: Ok });
+        return `${llmModelName()} (${llmProvider() === "anthropic" ? "Anthropic" : "OpenAI"}): JSON and image input OK`;
+      },
+    ),
+    run("Word timing", "Set OPENAI_API_KEY (used only to transcribe the narration for caption timing) or ALIGNMENT_URL; without either, timing is estimated.", async () => {
+      if (process.env.ALIGNMENT_URL) return `transcription service at ${process.env.ALIGNMENT_URL}`;
+      if (process.env.OPENAI_API_KEY) return `OpenAI ${process.env.ALIGNMENT_MODEL || "whisper-1"} transcribes the narration`;
+      return { warn: "no OPENAI_API_KEY: caption timing is estimated from the words, not transcribed" };
     }),
 
     run("Exa", `Set EXA_API_KEY and check the account has credits (dashboard.exa.ai). ${restart}`, async () => {

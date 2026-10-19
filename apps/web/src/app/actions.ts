@@ -6,7 +6,10 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@explainer/pipeline";
 import { VideoStyle } from "@explainer/schemas";
+import type { Brief, ResearchBrief } from "@explainer/schemas";
 import { db, schema } from "@/lib/db";
+import { latest } from "@/lib/store";
+import { getCtx } from "@/lib/pipeline";
 import { preflight, MANIM_CHECK } from "@/lib/preflight";
 
 const { projects, progressEvents } = schema;
@@ -68,4 +71,30 @@ export async function react(formData: FormData) {
     },
   });
   redirect(`/p/${child!.id}`);
+}
+
+const Graded = z.object({
+  verdict: z.enum(["got it", "nearly", "not yet"]),
+  feedback: z.string(),
+  missing: z.array(z.string()),
+});
+
+/**
+ * The learner explains the video back in their own words; a kind tutor says
+ * what landed and what to watch again. Judged against the learning goal and
+ * the claims the video was built from, nothing else.
+ */
+export async function explainBack(projectId: string, text: string): Promise<z.infer<typeof Graded>> {
+  const id = z.string().uuid().parse(projectId);
+  const answer = z.string().trim().min(15).max(600).parse(text);
+  const [brief, research] = await Promise.all([latest<Brief>(id, "brief"), latest<ResearchBrief>(id, "research")]);
+  if (!brief) throw new Error("video not found");
+  const claims = (research?.claims ?? []).filter((c) => c.fit === "needed" && c.confidence !== "contested").slice(0, 10).map((c) => `- ${c.text}`).join("\n");
+  return getCtx().llm.json({
+    system: `You are a kind, exact tutor. A learner watched a short explainer video and is now explaining it back in their own words. Judge only whether they understood the core mechanism, not their wording or spelling. verdict: "got it" when the mechanism is right in their own words (details may be missing); "nearly" when it is partly right or vague on the key step; "not yet" when it is wrong or the mechanism is absent. feedback: two short sentences, warm and specific, naming what they got right and the one thing to fix. missing: the key ideas they left out, at most three, a few words each; empty when they got it.`,
+    user: `Learning goal: ${brief.learningGoal}\n\nWhat the video claimed:\n${claims || "(no claims recorded)"}\n\nThe learner wrote:\n${answer}`,
+    schema: Graded,
+    maxTokens: 500,
+    effort: "low",
+  });
 }
