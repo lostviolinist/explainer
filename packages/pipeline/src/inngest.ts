@@ -7,7 +7,7 @@
  *   project/resume         the same data; picks a stopped project up from what it saved
  *   project/stage.failed   { projectId, stage, error }
  */
-import { Inngest, EventSchemas } from "inngest";
+import { Inngest, EventSchemas, NonRetriableError } from "inngest";
 import type { Brief, ScenePlan, SceneAssets, VideoStyle } from "@explainer/schemas";
 import type { Ctx } from "./context.js";
 import type { Renderer } from "./stages/assemble.js";
@@ -45,6 +45,19 @@ export function inPlanOrder(plan: ScenePlan, assets: SceneAssets[]): SceneAssets
 }
 
 export const inngest = new Inngest({ id: "explainer", schemas: new EventSchemas().fromRecord<Events>() });
+
+/**
+ * A render that hit its time ceiling is not retried: the retry would take just as long and
+ * start from frame one. The run stops with the reason, and "Try again" redoes only the edit.
+ */
+async function finalCut<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (e) {
+    if ((e as Error).name === "RenderTimeout") throw new NonRetriableError((e as Error).message, { cause: e });
+    throw e;
+  }
+}
 
 export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
   const makeVideo = inngest.createFunction(
@@ -99,8 +112,7 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
         step.run("review-script", () => reviewScript(ctx, brief, planWithRender, rb)),
       ]);
 
-      const result = await step.run("assemble", () => assemble(ctx, getRenderer(), brief, planWithRender, assets, rb, { music, sfx }, reviewed));
-      return result;
+      return step.run("assemble", () => finalCut(() => assemble(ctx, getRenderer(), brief, planWithRender, assets, rb, { music, sfx }, reviewed)));
     },
   );
 
@@ -173,7 +185,7 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
       ]);
 
       const assets = inPlanOrder(plan, [...kept, ...made]);
-      return step.run("assemble", () => assemble(ctx, getRenderer(), brief, plan, assets, rb, { music, sfx }, reviewed));
+      return step.run("assemble", () => finalCut(() => assemble(ctx, getRenderer(), brief, plan, assets, rb, { music, sfx }, reviewed)));
     },
   );
 

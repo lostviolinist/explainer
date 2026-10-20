@@ -83,6 +83,16 @@ export const RENDER_SPEED = {
   scale: Math.min(1, Math.max(0.25, Number(process.env.RENDER_SCALE) || 1)),
 };
 
+/** How far a render has got, for logs and the progress page. */
+export type RenderProgress = { frames: number; total: number; fps: number; fraction: number; elapsedS: number };
+export type RenderOptions = { onProgress?: (p: RenderProgress) => void };
+
+/** The render ran past RENDER_TIMEOUT_S (default 90 minutes): it is stopped rather than left running for hours. */
+export class RenderTimeout extends Error {
+  override name = "RenderTimeout";
+}
+export const RENDER_TIMEOUT_S = Math.max(300, Number(process.env.RENDER_TIMEOUT_S) || 5400);
+
 export class LocalRenderer {
   private serveUrl: Promise<string> | null = null;
   constructor(private upload: Upload) {}
@@ -99,24 +109,58 @@ export class LocalRenderer {
     return this.serveUrl;
   }
 
-  async render(props: ExplainerProps): Promise<RenderOut> {
-    const { renderMedia, selectComposition } = await import("@remotion/renderer");
+  async render(props: ExplainerProps, opts: RenderOptions = {}): Promise<RenderOut> {
+    const { renderMedia, selectComposition, makeCancelSignal } = await import("@remotion/renderer");
+    const t0 = Date.now();
     const serveUrl = await this.bundle();
     // Optional: a preinstalled Chrome/Chromium instead of Remotion's downloaded headless shell.
     const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || null;
     const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps: props, browserExecutable });
+    const total = composition.durationInFrames;
+    console.log(`[render] ${props.projectId}: ${total} frames at ${Math.round(composition.width * RENDER_SPEED.scale)}×${Math.round(composition.height * RENDER_SPEED.scale)}, ${RENDER_SPEED.concurrency} tabs; bundled in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
     const dir = await mkdtemp(join(tmpdir(), "explainer-"));
     const out = join(dir, `${props.projectId}.mp4`);
-    await renderMedia({
-      composition,
-      serveUrl,
-      codec: "h264",
-      outputLocation: out,
-      inputProps: props,
-      ...RENDER_SPEED,
-      audioBitrate: "192k",
-      browserExecutable,
-    });
+
+    // Progress, so a slow render is visible (every 10% in the log, every call to the page), and a
+    // ceiling, so a stuck one is stopped with a reason instead of running all night.
+    const started = Date.now();
+    let last: RenderProgress = { frames: 0, total, fps: 0, fraction: 0, elapsedS: 0 };
+    let logged = 0;
+    const { cancelSignal, cancel } = makeCancelSignal();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      cancel();
+    }, RENDER_TIMEOUT_S * 1000);
+    try {
+      await renderMedia({
+        composition,
+        serveUrl,
+        codec: "h264",
+        outputLocation: out,
+        inputProps: props,
+        ...RENDER_SPEED,
+        audioBitrate: "192k",
+        browserExecutable,
+        cancelSignal,
+        onProgress: ({ renderedFrames, progress }) => {
+          const elapsedS = (Date.now() - started) / 1000;
+          last = { frames: renderedFrames, total, fps: elapsedS > 0 ? renderedFrames / elapsedS : 0, fraction: progress, elapsedS };
+          if (progress * 10 >= logged + 1 || renderedFrames === total) {
+            logged = Math.floor(progress * 10);
+            const left = last.fps > 0 ? (total - renderedFrames) / last.fps / 60 : 0;
+            console.log(`[render] ${props.projectId}: ${renderedFrames}/${total} frames, ${last.fps.toFixed(1)} fps, about ${Math.ceil(left)} min left`);
+          }
+          opts.onProgress?.(last);
+        },
+      });
+    } catch (e) {
+      if (timedOut) throw new RenderTimeout(`the render ran for more than ${Math.round(RENDER_TIMEOUT_S / 60)} min (${last.frames} of ${total} frames at ${last.fps.toFixed(1)} fps). The machine is too slow for this video at this size: give Docker more CPUs and memory, or set RENDER_SCALE=0.6667 for 720p`);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+    console.log(`[render] ${props.projectId}: done in ${((Date.now() - started) / 60000).toFixed(1)} min (${last.fps.toFixed(1)} fps)`);
     const srt = buildSrt(props);
     const srtPath = join(dir, `${props.projectId}.srt`);
     await writeFile(srtPath, srt);
@@ -134,8 +178,9 @@ export class LambdaRenderer {
     private cfg: { functionName: string; serveUrl: string; region: string },
   ) {}
 
-  async render(props: ExplainerProps): Promise<RenderOut> {
+  async render(props: ExplainerProps, opts: RenderOptions = {}): Promise<RenderOut> {
     const lambda = await import("@remotion/lambda/client");
+    const started = Date.now();
     const { renderId, bucketName } = await lambda.renderMediaOnLambda({
       region: this.cfg.region as any,
       functionName: this.cfg.functionName,
@@ -150,6 +195,7 @@ export class LambdaRenderer {
     for (;;) {
       const p = await lambda.getRenderProgress({ renderId, bucketName, functionName: this.cfg.functionName, region: this.cfg.region as any });
       if (p.fatalErrorEncountered) throw new Error(p.errors.map((e) => e.message).join("; "));
+      opts.onProgress?.({ frames: p.framesRendered, total: totalFrames(props), fps: 0, fraction: p.overallProgress, elapsedS: (Date.now() - started) / 1000 });
       if (p.done && p.outputFile) {
         const srtUrl = await this.upload(`renders/${props.projectId}/captions.srt`, new TextEncoder().encode(buildSrt(props)), "application/x-subrip");
         return { videoUrl: p.outputFile, srtUrl, durationS: totalFrames(props) / FPS };

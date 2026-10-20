@@ -40,8 +40,9 @@ export interface RenderProps {
 
 export type RenderExtras = { music: MusicBed | null; sfx: SfxKit };
 
+export type RenderProgress = { frames: number; total: number; fps: number; fraction: number; elapsedS: number };
 export interface Renderer {
-  render(props: RenderProps): Promise<{ videoUrl: string; srtUrl: string; durationS: number }>;
+  render(props: RenderProps, opts?: { onProgress?: (p: RenderProgress) => void }): Promise<{ videoUrl: string; srtUrl: string; durationS: number }>;
 }
 
 export const Watchability = z.object({ goalAnswer: z.string(), couldMeetGoal: z.boolean(), confusingScenes: z.array(z.string()) });
@@ -124,6 +125,23 @@ export async function reviewScript(ctx: Ctx, brief: Brief, plan: ScenePlan, rese
   ];
 }
 
+/**
+ * Progress events while the final cut renders, at most one every 20 s or 5%, with the
+ * numbers the page shows: "rendering 1240 of 5400 frames (4.1 fps)".
+ */
+export function renderProgress(progress: ReturnType<typeof makeProgress>, nowMs: () => number = Date.now): (p: RenderProgress) => void {
+  let lastAt = -Infinity; // the first report always goes through: it tells the page the frame count
+  let lastFrames = 0;
+  return (p) => {
+    const t = nowMs();
+    if (p.frames < p.total && t - lastAt < 20_000 && (p.frames - lastFrames) / Math.max(1, p.total) < 0.05) return;
+    lastAt = t;
+    lastFrames = p.frames;
+    const fps = p.fps ? ` (${p.fps.toFixed(1)} fps)` : "";
+    void progress(`rendering ${p.frames} of ${p.total} frames${fps}`, 0.5 + 0.48 * Math.min(1, p.fraction));
+  };
+}
+
 export async function assemble(ctx: Ctx, renderer: Renderer, brief: Brief, plan: ScenePlan, assets: SceneAssets[], research: ResearchBrief, extras: RenderExtras = { music: null, sfx: {} }, reviewed?: QaResult[]): Promise<RenderResult> {
   const progress = makeProgress(ctx, brief.projectId, "assemble");
   const qa: QaResult[] = [];
@@ -144,7 +162,7 @@ export async function assemble(ctx: Ctx, renderer: Renderer, brief: Brief, plan:
 
   await progress("rendering", 0.5);
   const props = buildRenderProps(brief, plan, assets, research, extras);
-  const out = await renderer.render(props);
+  const out = await renderer.render(props, { onProgress: renderProgress(progress) });
 
   const costUsd = 0; // summed from the store by the web layer
   const result = RenderResult.parse({ projectId: brief.projectId, videoUrl: out.videoUrl, srtUrl: out.srtUrl, durationS: out.durationS, qa, costUsd });

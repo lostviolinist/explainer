@@ -588,3 +588,19 @@ test("a stopped project redoes only the scenes with no saved assets, and assembl
   assert.deepEqual(inPlanOrder(plan, [...kept, asset("s3"), asset("s2")]).map((a) => a.sceneId), ["s1", "s2", "s3", "s4"]);
   assert.deepEqual(scenesToRedo(plan, []).map((s) => s.id), ["s1", "s2", "s3", "s4"]);
 });
+
+test("render progress reaches the page as frame counts, at most every 20 s or 5%, and always at the end", async () => {
+  const { renderProgress } = await import("../src/stages/assemble.ts");
+  const events: [string, number][] = [];
+  let now = 0;
+  const report = renderProgress(async (message, fraction) => { events.push([message, fraction]); }, () => now);
+  const at = (frames: number, t: number) => { now = t; report({ frames, total: 1000, fps: 4, fraction: frames / 1000, elapsedS: t / 1000 }); };
+  at(10, 1_000); // first report goes through
+  at(20, 2_000); // too soon and too small a step: dropped
+  at(60, 3_000); // 5% further: reported
+  at(70, 24_000); // 20 s later: reported even though only 1% further
+  at(1000, 25_000); // the last frame always
+  assert.deepEqual(events.map(([m]) => m), ["rendering 10 of 1000 frames (4.0 fps)", "rendering 60 of 1000 frames (4.0 fps)", "rendering 70 of 1000 frames (4.0 fps)", "rendering 1000 of 1000 frames (4.0 fps)"]);
+  assert.ok(events.every(([, f]) => f >= 0.5 && f <= 0.98), "fractions stay inside the editing span");
+  assert.equal(events.at(-1)![1], 0.98);
+});

@@ -173,6 +173,7 @@ export function Progress({ projectId, question, title, style, initial, initialLi
       const per = view.scenes.map((s) => (s.done ? 1 : CODED.has(s.visualType) ? (s.audioUrl ? 0.15 : 0) + (s.clipUrl ? 0.85 : 0) : (s.audioUrl ? 0.15 : 0) + (s.stillUrl || PROGRAMMATIC.has(s.visualType) ? 0.45 : 0) + (s.clipUrl ? 0.4 : 0)));
       within = per.reduce((a, b) => a + b, 0) / per.length;
     }
+    // Before the first frame count arrives, ease toward the end of the stage; after it, the fraction is real.
     if (stage === "assemble" && last?.message === "rendering" && now) {
       const since = (now - new Date(last.at).getTime()) / 1000;
       within = 0.5 + 0.48 * (1 - Math.exp(-since / 120));
@@ -235,7 +236,7 @@ export function Progress({ projectId, question, title, style, initial, initialLi
     }
     if (s.key === "assemble") {
       if (status === "done") note = "Music and final cut";
-      else if (status === "active" && last?.message === "rendering") note = "Rendering the final cut";
+      else if (status === "active" && last?.message.startsWith("rendering")) note = "Rendering the final cut";
     }
     if (status === "error" && s.key !== "visuals") note = "Stopped here";
     return { ...s, status, fill, note };
