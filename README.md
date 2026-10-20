@@ -101,9 +101,12 @@ Ten minutes is a long time to stare at a progress bar, so the progress page is b
 - **Did you know?** — the strongest claims from the research, deduplicated so the same fact doesn't appear twice in different words.
 - **Myth or fact?** — a quiz built from the misconceptions the research found (the myths) and the best-corroborated facts, interleaved so the answer isn't always "myth", with the correcting claim shown after each answer and a running score.
 - **The storyboard**: every scene's picture and narration as it's made, with a play button for the voice.
-- **The rough cut**, once scenes are finished: the real composition plays in the browser — narration, captions, motion, transitions — while the final video (with its music) still renders.
+- **The rough cut**, once scenes are finished: the real composition plays in the browser — narration, captions, motion, transitions — while the final video (with its music) still renders. Until then the frame shows the opening line. A strip under it colours each scene by where it is: in the cut, being animated, built in the edit, still drawing.
+- **The progress card**: five stages (Understanding, Researching, Writing, Illustrating, Editing), each with a note like "13 sources" or "4 of 8 scenes ready", the live status line, the time left as a range, and the percentage, which the tab title also shows.
 
 By the time the video is ready, a curious viewer has already learned most of it.
+
+When a scene is drawn again after a failed attempt, the status line says so in amber and the scene's row reads "Retrying". If the run stops for good, the page says which stage it stopped at and what was kept, and **Try those scenes again** picks it up from there: the research, script, voice and the scenes that were made stay; only what is missing is made, then the cut. **Start over** asks the question afresh.
 
 ### What it costs
 

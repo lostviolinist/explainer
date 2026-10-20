@@ -11,6 +11,7 @@ import { AfterVideo } from "@/app/Quiz";
 import { cleanTitle } from "@/lib/titles";
 import { react } from "@/app/actions";
 import { PendingButton, PendingNote } from "@/app/pending";
+import { Header } from "@/app/Header";
 import { Progress } from "./Progress";
 
 export const dynamic = "force-dynamic";
@@ -23,18 +24,27 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const events = await db.select().from(schema.progressEvents).where(eq(schema.progressEvents.projectId, id)).orderBy(asc(schema.progressEvents.at));
   const render = project.stage === "done" ? await latest<RenderResult>(id, "render") : null;
 
+  const title = cleanTitle(project.question, project.title);
   if (!render) {
     return (
-      <main className="wide">
-        <p className="back"><Link href="/">← Ask something else</Link></p>
-        <h1 className="question">{cleanTitle(project.question, project.title)}</h1>
-        <Progress
-          projectId={id}
-          question={project.question}
-          initialLive={toPublic(await getLiveState(id))}
-          initial={events.map((e) => ({ stage: e.stage, message: e.message, fraction: e.fraction, preview: toPublic(e.preview as any), at: e.at.toISOString() }))}
-        />
-      </main>
+      <>
+        <Header wide />
+        <main className="mk-page">
+          <Link href="/" className="mk-back">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+            Back to home
+          </Link>
+          <h1 className="mk-title">{title}</h1>
+          <Progress
+            projectId={id}
+            question={project.question}
+            title={title}
+            style={project.style}
+            initialLive={toPublic(await getLiveState(id))}
+            initial={events.map((e) => ({ stage: e.stage, message: e.message, fraction: e.fraction, preview: toPublic(e.preview as any), at: e.at.toISOString() }))}
+          />
+        </main>
+      </>
     );
   }
 
@@ -46,7 +56,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   return (
     <main>
       <p className="back"><Link href="/">← Ask something else</Link></p>
-      <h1 className="question">{cleanTitle(project.question, project.title)}</h1>
+      <h1 className="question">{title}</h1>
       {/* Captions are burned into the video; the .srt is offered as a download. */}
       <video className="player" src={videoUrl} poster={poster} controls playsInline preload="metadata" />
 

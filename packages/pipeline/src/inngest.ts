@@ -4,10 +4,11 @@
  *
  * Events:
  *   project/created        { projectId, question, history?, derivedFrom?, style? }
+ *   project/resume         the same data; picks a stopped project up from what it saved
  *   project/stage.failed   { projectId, stage, error }
  */
 import { Inngest, EventSchemas } from "inngest";
-import type { Brief, VideoStyle } from "@explainer/schemas";
+import type { Brief, ScenePlan, SceneAssets, VideoStyle } from "@explainer/schemas";
 import type { Ctx } from "./context.js";
 import type { Renderer } from "./stages/assemble.js";
 import { intake } from "./stages/intake.js";
@@ -17,18 +18,31 @@ import { planScene, narrate, renderSceneAssets } from "./stages/visuals.js";
 import { assemble, reviewScript } from "./stages/assemble.js";
 import { ensureMusicBed, ensureSfxKit } from "./stages/library.js";
 
+type ProjectData = {
+  projectId: string;
+  question: string;
+  history?: { level?: Brief["level"]; pressedSimpler?: number; pressedDeeper?: number };
+  derivedFrom?: Brief["derivedFrom"];
+  style?: VideoStyle;
+};
+
 type Events = {
-  "project/created": {
-    data: {
-      projectId: string;
-      question: string;
-      history?: { level?: Brief["level"]; pressedSimpler?: number; pressedDeeper?: number };
-      derivedFrom?: Brief["derivedFrom"];
-      style?: VideoStyle;
-    };
-  };
+  "project/created": { data: ProjectData };
+  "project/resume": { data: ProjectData };
   "project/stage.failed": { data: { projectId: string; stage: string; error: string } };
 };
+
+/** The scenes a stopped project still has to make: those in the plan with no saved assets. */
+export function scenesToRedo(plan: ScenePlan, assets: SceneAssets[]): ScenePlan["scenes"] {
+  const have = new Set(assets.map((a) => a.sceneId));
+  return plan.scenes.filter((s) => !have.has(s.id));
+}
+
+/** Assets in the plan's scene order, so the cut is assembled the same whether a scene was made now or earlier. */
+export function inPlanOrder(plan: ScenePlan, assets: SceneAssets[]): SceneAssets[] {
+  const byId = new Map(assets.map((a) => [a.sceneId, a]));
+  return plan.scenes.map((s) => byId.get(s.id)).filter((a): a is SceneAssets => Boolean(a));
+}
 
 export const inngest = new Inngest({ id: "explainer", schemas: new EventSchemas().fromRecord<Events>() });
 
@@ -90,5 +104,78 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
     },
   );
 
-  return [makeVideo];
+  /**
+   * Pick a stopped project up where it left off. Everything it saved (brief, research, plan,
+   * the scenes that were made) is kept; only what is missing is made, then the cut is assembled.
+   */
+  const resumeVideo = inngest.createFunction(
+    {
+      id: "resume-video",
+      retries: 2,
+      concurrency: [{ limit: 20 }, { key: "event.data.projectId", limit: 1 }],
+      onFailure: async ({ event, error, step }) => {
+        const { projectId } = event.data.event.data;
+        await step.sendEvent("notify-failure", { name: "project/stage.failed", data: { projectId, stage: "unknown", error: error.message } });
+        await getCtx().store.progress({ projectId, stage: "failed", message: `something went wrong: ${error.message.slice(0, 300)}`, fraction: 1, at: new Date().toISOString() });
+      },
+    },
+    { event: "project/resume" },
+    async ({ event, step }) => {
+      const ctx = getCtx();
+      const { projectId, question, history, derivedFrom, style } = event.data;
+      const saved = async <T,>(get: () => Promise<T>): Promise<T | null> => get().catch(() => null);
+
+      const brief0 = await step.run("brief", async () => (await saved(() => ctx.store.getBrief(projectId))) ?? (await intake(ctx, { projectId, question, history, derivedFrom, style })));
+      const { brief, research: rb } = await step.run("research", async () => {
+        const have = await saved(() => ctx.store.getResearch(projectId));
+        return have ? { brief: brief0, research: have } : await research(ctx, brief0);
+      });
+
+      let planWithRender = await step.run("saved-plan", () => saved(() => ctx.store.getPlan(projectId)));
+      if (!planWithRender) {
+        const plan = await step.run("script", () => script(ctx, brief, rb));
+        const planned = await Promise.all(
+          plan.scenes.map((s) =>
+            step.run(`plan-${s.id}`, async () => ({ ...s, render: await planScene(ctx, brief, s, plan.cast) })),
+          ),
+        );
+        planWithRender = { ...plan, scenes: planned };
+        await step.run("save-plan", () => ctx.store.savePlan(planWithRender!));
+      }
+      const plan = planWithRender;
+
+      const kept = await step.run("saved-scenes", () => ctx.store.getSceneAssets(projectId));
+      const redo = scenesToRedo(plan, kept);
+      await step.run("note", () =>
+        ctx.store.progress({
+          projectId,
+          stage: redo.length ? "visuals" : "assemble",
+          message: redo.length ? `trying ${redo.length === 1 ? "scene " + redo[0]!.id.slice(1) : redo.length + " scenes"} again` : "finishing the cut",
+          fraction: 0,
+          at: ctx.now(),
+        }),
+      );
+
+      const [made, music, sfx, reviewed] = await Promise.all([
+        Promise.all(
+          redo.map((s) =>
+            step.run(`scene-${s.id}`, async () => {
+              const audio = await narrate(ctx, brief, s);
+              const a = await renderSceneAssets(ctx, brief, plan, s, audio);
+              await ctx.store.saveSceneAssets(a);
+              return a;
+            }),
+          ),
+        ),
+        step.run("music", () => ensureMusicBed(ctx, projectId, brief.tone)),
+        step.run("sfx", () => ensureSfxKit(ctx, projectId)),
+        step.run("review-script", () => reviewScript(ctx, brief, plan, rb)),
+      ]);
+
+      const assets = inPlanOrder(plan, [...kept, ...made]);
+      return step.run("assemble", () => assemble(ctx, getRenderer(), brief, plan, assets, rb, { music, sfx }, reviewed));
+    },
+  );
+
+  return [makeVideo, resumeVideo];
 }

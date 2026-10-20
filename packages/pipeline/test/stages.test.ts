@@ -578,3 +578,13 @@ test("a code scene in an Illustrated plan is not drawn as code", async () => {
   await assert.rejects(renderSceneAssets(ctx, briefFor(120), {} as ScenePlan, codeScene("three"), codeAudio), /stop here/);
   assert.equal(renders.length, 0, "the sandbox is never asked");
 });
+
+test("a stopped project redoes only the scenes with no saved assets, and assembles them in plan order", async () => {
+  const { scenesToRedo, inPlanOrder } = await import("../src/inngest.ts");
+  const plan = { projectId: PID, scenes: ["s1", "s2", "s3", "s4"].map((id) => ({ id })) } as unknown as ScenePlan;
+  const asset = (sceneId: string) => ({ projectId: PID, sceneId }) as unknown as SceneAssets;
+  const kept = [asset("s4"), asset("s1")];
+  assert.deepEqual(scenesToRedo(plan, kept).map((s) => s.id), ["s2", "s3"]);
+  assert.deepEqual(inPlanOrder(plan, [...kept, asset("s3"), asset("s2")]).map((a) => a.sceneId), ["s1", "s2", "s3", "s4"]);
+  assert.deepEqual(scenesToRedo(plan, []).map((s) => s.id), ["s1", "s2", "s3", "s4"]);
+});

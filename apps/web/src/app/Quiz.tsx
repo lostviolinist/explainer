@@ -39,6 +39,34 @@ export function MythQuiz({ items }: { items: QuizItem[] }) {
   );
 }
 
+/** Myth or fact, the Unfold way: a statement, two buttons, then one verdict line with the explanation. */
+export function MythOrFact({ items }: { items: QuizItem[] }) {
+  const [i, setI] = useState(0);
+  const [picked, setPicked] = useState<"myth" | "fact" | null>(null);
+  const q = items[i % items.length]!;
+  const right = picked === q.answer;
+  return (
+    <div className="mof">
+      <p className="eyebrow">Myth or fact?</p>
+      <p className="mof-statement">“{q.statement}”</p>
+      <div className="mof-actions">
+        <button type="button" aria-pressed={picked === "myth"} onClick={() => !picked && setPicked("myth")}>Myth</button>
+        <button type="button" aria-pressed={picked === "fact"} onClick={() => !picked && setPicked("fact")}>Fact</button>
+      </div>
+      {picked && (
+        <>
+          <p className="mof-verdict appear">
+            <strong className={right ? "right" : "wrong"}>{right ? "Right, it's a " : "Not quite: it's a "}{q.answer}.</strong> {q.explanation}
+          </p>
+          {items.length > 1 && (
+            <button type="button" className="btn-quiet mof-next" onClick={() => { setPicked(null); setI((x) => x + 1); }}>Next one</button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 type Graded = Awaited<ReturnType<typeof explainBack>>;
 
 /**

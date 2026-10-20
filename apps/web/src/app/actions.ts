@@ -2,13 +2,13 @@
 
 import { redirect } from "next/navigation";
 import { randomBytes } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@explainer/pipeline";
 import { VideoStyle } from "@explainer/schemas";
 import type { Brief, ResearchBrief } from "@explainer/schemas";
 import { db, schema } from "@/lib/db";
-import { latest } from "@/lib/store";
+import { latest, drizzleStore } from "@/lib/store";
 import { getCtx } from "@/lib/pipeline";
 import { preflight, MANIM_CHECK } from "@/lib/preflight";
 
@@ -71,6 +71,41 @@ export async function react(formData: FormData) {
     },
   });
   redirect(`/p/${child!.id}`);
+}
+
+/**
+ * Pick a stopped video up where it left off. Everything it saved stays (research, script,
+ * voice, the scenes that were made); the worker makes only what is missing, then the cut.
+ */
+export async function retryProject(projectId: string): Promise<void> {
+  const id = z.string().uuid().parse(projectId);
+  const [project] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
+  if (!project) throw new Error("project not found");
+  if (project.stage !== "failed") return; // already running, or finished
+
+  // Where it stopped: the stage of the last event before the failure.
+  const recent = await db.select({ stage: progressEvents.stage }).from(progressEvents).where(eq(progressEvents.projectId, id)).orderBy(desc(progressEvents.at)).limit(20);
+  const stoppedAt = recent.map((e) => e.stage).find((st) => st !== "failed" && st !== "queued") ?? "intake";
+
+  const lineage = project.userId
+    ? await db.select({ reaction: projects.reaction }).from(projects).where(and(eq(projects.userId, project.userId), inArray(projects.reaction, ["simpler", "deeper"])))
+    : [];
+  const reaction = project.reaction as "simpler" | "deeper" | "follow-up" | null;
+  await inngest.send({
+    name: "project/resume",
+    data: {
+      projectId: id,
+      question: project.question,
+      style: VideoStyle.catch("illustrated").parse(project.style),
+      history: { pressedSimpler: lineage.filter((x) => x.reaction === "simpler").length, pressedDeeper: lineage.filter((x) => x.reaction === "deeper").length },
+      derivedFrom:
+        project.parentId && reaction
+          ? { projectId: project.parentId, reaction, followUpQuestion: reaction === "follow-up" ? project.question.replace(/\s*\(follow-up to: .*\)$/, "") : undefined }
+          : undefined,
+    },
+  });
+  // Only once the worker has the event: the page leaves the stopped state on this, and the stream reopens.
+  await drizzleStore.progress({ projectId: id, stage: stoppedAt as never, message: "trying again", fraction: 0, at: new Date().toISOString() });
 }
 
 const Graded = z.object({
