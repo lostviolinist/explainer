@@ -119,7 +119,7 @@ const MOTION_NARRATION = "A blue ray zig-zags from molecule to molecule. Whereve
 
 /** Canned answers by prompt; the real OpenAILLM sends them through a fake Responses API below. */
 function answer(system: string, user: string): unknown {
-  if (/turn a learner's question/.test(system)) return { topic: "why the sky is blue", learningGoal: "After watching, the viewer can explain why the daytime sky looks blue.", level: "basics", ageMode: null, tone: "neutral", background: "light", statement: "A 3-minute neutral explainer on sky colour." };
+  if (/turn a learner's question/.test(system)) return { title: "Why is the sky blue?", topic: "why the sky is blue", learningGoal: "After watching, the viewer can explain why the daytime sky looks blue.", level: "basics", ageMode: null, tone: "neutral", background: "light", statement: "A 3-minute neutral explainer on sky colour." };
   if (/web search queries/.test(system)) return { queries: ["why is the sky blue", "rayleigh scattering wavelength", "sky blue misconception ocean"] };
   if (/Extract the claims from this page/.test(system)) {
     const k = Object.keys(TITLES).findIndex((u) => user.includes(u));

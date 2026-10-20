@@ -32,7 +32,10 @@ async function must<T>(projectId: string, kind: string): Promise<T> {
 }
 
 export const drizzleStore: ArtifactStore = {
-  saveBrief: (b: Brief) => save(b.projectId, "brief", b),
+  async saveBrief(b: Brief) {
+    await save(b.projectId, "brief", b);
+    if (b.title) await db.update(projects).set({ title: b.title }).where(eq(projects.id, b.projectId));
+  },
   saveResearch: (r: ResearchBrief) => save(r.projectId, "research", r),
   savePlan: (p: ScenePlan) => save(p.projectId, "plan", p),
   saveSceneAssets: (a: SceneAssets) => save(a.projectId, "sceneAssets", a, a.sceneId),

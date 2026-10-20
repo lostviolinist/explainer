@@ -58,6 +58,8 @@ export type VideoStyle = z.infer<typeof VideoStyle>;
 export const Brief = z.object({
   projectId: z.string().uuid(),
   question: z.string().min(1).max(500),
+  /** The question as a clean, sentence-case title for the video ("What is backpropagation?"). Briefs from before it existed have none. */
+  title: z.string().optional(),
   /** Normalised topic, e.g. "autumn leaf colour change" */
   topic: z.string(),
   /** "After watching, the viewer can…" */

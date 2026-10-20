@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { ask } from "./actions";
+import { version } from "@/lib/version";
 
 type Check = { name: string; status: "ok" | "warn" | "fail"; detail: string; fix?: string };
 type Style = "illustrated" | "math";
@@ -10,146 +11,174 @@ type Style = "illustrated" | "math";
 /** Must match MANIM_CHECK in lib/preflight.ts (kept out of this client bundle). */
 const MANIM_CHECK = "3Blue1Brown animator";
 
-const STYLES: { id: Style; name: string; blurb: string; icon: React.ReactNode }[] = [
-  {
-    id: "illustrated",
-    name: "Illustrated",
-    blurb: "Flat illustrations and motion graphics, built on screen as it's explained",
-    icon: (
-      <svg viewBox="0 0 48 32" aria-hidden="true">
-        <rect width="48" height="32" rx="6" fill="#F6F3EC" />
-        <circle cx="34" cy="11" r="5" fill="#F2C14E" />
-        <path d="M0 26 L14 14 L24 22 L32 16 L48 27 V32 H0 Z" fill="#5FA36B" />
-        <path d="M0 29 L16 21 L30 30 Z" fill="#8FB8E8" />
-      </svg>
-    ),
-  },
-  {
-    id: "math",
-    name: "3Blue1Brown",
-    blurb: "Equations, graphs and geometry, animated with Manim",
-    icon: (
-      <svg viewBox="0 0 48 32" aria-hidden="true">
-        <rect width="48" height="32" rx="6" fill="#000" />
-        <path d="M8 26 H42 M8 26 V5" stroke="#bbb" strokeWidth="1" />
-        <path d="M9 7 C 16 20, 26 24, 41 25" stroke="#58C4DD" strokeWidth="2" fill="none" />
-        <circle cx="20" cy="18.5" r="1.8" fill="#FFFF66" />
-      </svg>
-    ),
-  },
-];
+const EXAMPLES = ["Why is the sky blue?", "How do vaccines train the immune system?", "What is a Fourier transform?", "How does compound interest work?"];
+
+const IllustratedThumb = () => (
+  <svg width="44" height="32" viewBox="0 0 44 32" aria-hidden="true">
+    <rect width="44" height="32" fill="#F4EFE4" />
+    <circle cx="31" cy="11" r="5" fill="#E9B730" />
+    <path d="M0 32 L0 22 Q11 13 22 21 T44 19 L44 32 Z" fill="#81B29A" />
+  </svg>
+);
+const MathThumb = () => (
+  <svg width="44" height="32" viewBox="0 0 44 32" aria-hidden="true">
+    <rect width="44" height="32" fill="#0B0B0B" />
+    <path d="M6 26 H40 M8 4 V28" stroke="#5A5A5A" strokeWidth="1" />
+    <path d="M8 25 C16 25 18 8 25 8 S34 20 40 16" stroke="#58C4DD" strokeWidth="2.2" fill="none" />
+  </svg>
+);
 
 /** The submit button, and the "starting" state while the server sets the run up (it can take a few seconds). */
 function Submit({ blocked }: { blocked: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={blocked || pending} title={blocked ? "Not available right now" : undefined} aria-busy={pending}>
+    <button type="submit" className="btn-accent" disabled={blocked || pending} aria-busy={pending} title={blocked ? "Not available right now" : undefined}>
       {pending ? (
         <>
           <span className="spin" aria-hidden="true" /> Starting…
         </>
       ) : (
-        "Explain it"
+        <>
+          Explain it
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </>
       )}
     </button>
   );
 }
 
-/** Dims the form and says what's happening while the run is being set up. */
+/** Says what's happening while the run is being set up. */
 function Starting() {
   const { pending } = useFormStatus();
   if (!pending) return null;
   return (
     <div className="starting" role="status">
-      <span className="spin" aria-hidden="true" /> Setting up your video — the progress page opens in a moment.
+      <span className="spin" aria-hidden="true" /> Setting up your video. The progress page opens in a moment.
     </div>
   );
 }
 
 /**
- * The question box. The setup check runs quietly in the background: visitors
- * never see it unless something is actually broken (then the form is held
- * with a plain message). Details for whoever runs the site: open /?setup, or
- * run in development. The server action checks again before starting a run.
+ * The composer: one card holding everything about the request. The setup check
+ * runs quietly in the background; visitors see an amber banner only when
+ * something is actually broken. Whoever runs the site opens /?setup for the
+ * row-by-row details.
  */
 export function AskForm() {
+  const [query, setQuery] = useState("");
+  const [style, setStyle] = useState<Style>("illustrated");
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   const [details, setDetails] = useState(process.env.NODE_ENV !== "production");
+  const box = useRef<HTMLTextAreaElement>(null);
 
-  const load = useCallback((refresh: boolean) => {
-    setChecks(null);
+  const load = useCallback((refresh = false) => {
+    setChecking(true);
     setError(null);
     fetch(`/api/preflight${refresh ? "?refresh" : ""}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`setup check returned ${r.status}`))))
-      .then((d: { checks: Check[] }) => setChecks(d.checks))
-      .catch((e: Error) => setError(e.message));
+      .then((data: { checks: Check[] }) => setChecks(data.checks))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setChecking(false));
   }, []);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("setup")) setDetails(true);
-    load(false);
+    load();
   }, [load]);
 
-  const [style, setStyle] = useState<Style>("illustrated");
-  const failing = checks?.filter((c) => c.status === "fail") ?? [];
-  const warnings = checks?.filter((c) => c.status === "warn") ?? [];
-  // The 3Blue1Brown style needs its Manim sandbox; the Illustrated style needs nothing beyond the keys.
+  const failing = (checks ?? []).filter((c) => c.status === "fail");
+  const warnings = (checks ?? []).filter((c) => c.status === "warn");
+  const blocked = failing.length > 0 || Boolean(error);
+  // Mathematical needs its Manim sandbox; Illustrated needs nothing beyond the keys.
   const mathReady = checks === null || checks.find((c) => c.name === MANIM_CHECK)?.status === "ok";
-  const blocked = failing.length > 0;
   useEffect(() => {
     if (!mathReady && style === "math") setStyle("illustrated");
   }, [mathReady, style]);
 
+  const reason = checking
+    ? "Checking the setup (OpenAI, Exa, Hedra, storage, renderer, animators)…"
+    : error
+      ? `The setup check couldn't run (${error}). Everything below still plays.`
+      : `The setup check failed on ${failing.map((c) => c.name.toLowerCase()).join(", ")}. Everything below still plays.`;
+
+  const useExample = (text: string) => {
+    setQuery(text);
+    box.current?.focus();
+  };
+
   return (
     <>
+      {blocked && (
+        <div className="setup-banner" role="status">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F2B544" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3.5L2.5 20h19z" /><path d="M12 10v4.5M12 17.2h.01" /></svg>
+          <div className="text">
+            <strong>Can't start new videos right now</strong>
+            <p>{reason}</p>
+          </div>
+          <button type="button" className="btn-outline" onClick={() => load(true)} disabled={checking}>{checking ? "Checking…" : "Check again"}</button>
+        </div>
+      )}
+
       <form action={ask}>
-        <div className="ask">
-          <input name="question" placeholder="why do leaves change colour in autumn?" autoFocus required minLength={3} maxLength={500} />
-          <Submit blocked={blocked} />
+        <div className="composer">
+          <label htmlFor="q" className="sr-only">Your question</label>
+          <textarea
+            id="q"
+            ref={box}
+            name="question"
+            rows={2}
+            placeholder="How do noise-cancelling headphones work?"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends; Shift+Enter makes a new line.
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
+            required
+            minLength={3}
+            maxLength={500}
+            autoFocus
+          />
+          <input type="hidden" name="style" value={style} />
+          <div className="composer-row">
+            <fieldset className="style-pick">
+              <legend className="sr-only">Video style</legend>
+              <button type="button" className="style-btn" aria-pressed={style === "illustrated"} onClick={() => setStyle("illustrated")}>
+                <IllustratedThumb />
+                <span><b>Illustrated</b><small>Flat art and motion graphics</small></span>
+              </button>
+              <button type="button" className="style-btn" aria-pressed={style === "math"} onClick={() => setStyle("math")} disabled={!mathReady} title={mathReady ? undefined : "Not available right now"}>
+                <MathThumb />
+                <span><b>Mathematical</b><small>{mathReady ? "Equations and graphs, in Manim" : "Not available right now"}</small></span>
+              </button>
+            </fieldset>
+            <div className="composer-go">
+              <span className="eta hide-sm">about 10 min</span>
+              <Submit blocked={blocked} />
+            </div>
+          </div>
         </div>
         <Starting />
-        <input type="hidden" name="style" value={style} />
-        <div className="styles" role="radiogroup" aria-label="Video style">
-          {STYLES.map((s) => {
-            const unavailable = s.id === "math" && !mathReady;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                role="radio"
-                aria-checked={style === s.id}
-                className={`style-card${style === s.id ? " selected" : ""}`}
-                disabled={unavailable}
-                title={unavailable ? "Not available right now" : undefined}
-                onClick={() => setStyle(s.id)}
-              >
-                {s.icon}
-                <span>
-                  <b>{s.name}</b>
-                  <span className="small">{unavailable ? "Not available right now" : s.blurb}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
       </form>
-      {(blocked || details || (checks && !mathReady)) && (
-        <div className="setup">
-          {blocked && !details && (
-            <div className="setup-problems">
-              <strong>We can't make videos right now</strong>
-              <div className="small">
-                A service we rely on is unavailable. Please try again in a few minutes.{" "}
-                <a href="/?setup" onClick={(e) => { e.preventDefault(); setDetails(true); }}>Running this site? See what's wrong.</a>
-              </div>
-            </div>
-          )}
-          {!blocked && !details && checks && !mathReady && <div className="small">The 3Blue1Brown style is unavailable right now; Illustrated still works.</div>}
-          {details && !checks && !error && <span className="small">Checking the setup (OpenAI, Exa, Hedra, storage, renderer, animators)…</span>}
-          {details && error && <span className="small">Couldn't run the setup check: {error}</span>}
-          {details && checks && (
-            <div className={`setup-problems${blocked ? "" : " setup-ok"}`}>
-              <strong>{blocked ? "Fix these before generating a video" : warnings.length ? "Setup check passed, with notes" : "Setup check passed"}</strong>
+
+      <div className="try">
+        <span className="label">Try</span>
+        {EXAMPLES.map((t) => (
+          <button key={t} type="button" className="chip" onClick={() => useExample(t)}>{t}</button>
+        ))}
+      </div>
+
+      {details && (
+        <div className={`setup-details${blocked ? " failing" : ""}`}>
+          {!checks && !error && <span className="small">Checking the setup (OpenAI, Exa, Hedra, storage, renderer, animators)…</span>}
+          {error && <span className="small">Couldn't run the setup check: {error}</span>}
+          {checks && (
+            <>
+              <strong>{blocked ? "Fix these before making a video" : warnings.length ? "Setup check passed, with notes" : "Setup check passed"}</strong>
               <ul>
                 {checks.map((c) => (
                   <li key={c.name} className={c.status}>
@@ -158,10 +187,11 @@ export function AskForm() {
                   </li>
                 ))}
               </ul>
-            </div>
+            </>
           )}
-          {details && (checks || error) && (
-            <button type="button" className="btn ghost small-btn" onClick={() => load(true)}>Check again</button>
+          <div className="version" title="Which code this site is running: git commit, branch, build time">{version.label}</div>
+          {(checks || error) && (
+            <button type="button" className="btn-outline" onClick={() => load(true)} disabled={checking}>{checking ? "Checking…" : "Check again"}</button>
           )}
         </div>
       )}

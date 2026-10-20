@@ -7,6 +7,7 @@ import { Brief, Level, Tone, Background, type VideoStyle } from "@explainer/sche
 import type { Ctx } from "../context.js";
 
 export const Inferred = z.object({
+  title: z.string(),
   topic: z.string(),
   learningGoal: z.string(),
   level: Level,
@@ -30,6 +31,7 @@ const SYSTEM = `You turn a learner's question or topic into a brief for a short 
 You infer everything; nothing is asked of the learner.
 
 Rules:
+- title: the question as a clean title for the video: sentence case, spelling and grammar corrected, a question mark if it is a question, no quotes, under 70 characters ("what is a backpropagation?" → "What is backpropagation?"; "henry 8th" → "Who was Henry VIII?").
 - A question ("why…", "how does…") becomes the learning goal directly. A bare topic gets the angle most people actually wonder about.
 - level: "nothing" if the wording suggests no background; "basics" by default; "deep" only if the question uses the field's jargon correctly or asks a second-order "why".
 - ageMode: only from explicit cues ("for my 9-year-old"); otherwise null.

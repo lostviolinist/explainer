@@ -67,7 +67,7 @@ const research: ResearchBrief = {
 
 test("intake infers a brief from a question with no user input", async () => {
   const llm = scriptedLLM([
-    [/turn a learner's question/, { topic: "autumn leaf colour", learningGoal: "After watching, the viewer can explain what happens to chlorophyll", level: "basics", ageMode: null, tone: "neutral", background: "light", statement: "A 3-minute neutral explainer…" }],
+    [/turn a learner's question/, { title: "Why do leaves change colour in autumn?", topic: "autumn leaf colour", learningGoal: "After watching, the viewer can explain what happens to chlorophyll", level: "basics", ageMode: null, tone: "neutral", background: "light", statement: "A 3-minute neutral explainer…" }],
   ]);
   const ctx = ctxWith(llm);
   const brief = await intake(ctx, { projectId: PID, question: "why do leaves change colour in autumn?" });
@@ -78,7 +78,7 @@ test("intake infers a brief from a question with no user input", async () => {
 
 test("a 'simpler' re-run lowers the level even if the model inferred basics", async () => {
   const llm = scriptedLLM([
-    [/turn a learner's question/, { topic: "t", learningGoal: "After watching, the viewer can x", level: "basics", ageMode: null, tone: "neutral", background: "light", statement: "s" }],
+    [/turn a learner's question/, { title: "Q?", topic: "t", learningGoal: "After watching, the viewer can x", level: "basics", ageMode: null, tone: "neutral", background: "light", statement: "s" }],
   ]);
   const brief = await intake(ctxWith(llm), { projectId: PID, question: "q", derivedFrom: { projectId: PID, reaction: "simpler" } });
   assert.equal(brief.level, "nothing");

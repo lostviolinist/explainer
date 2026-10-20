@@ -8,6 +8,7 @@ import { getLiveState } from "@/lib/live";
 import { toPublic } from "@/lib/public-urls";
 import { videoCost } from "@/lib/gallery";
 import { AfterVideo } from "@/app/Quiz";
+import { cleanTitle } from "@/lib/titles";
 import { react } from "@/app/actions";
 import { PendingButton, PendingNote } from "@/app/pending";
 import { Progress } from "./Progress";
@@ -26,7 +27,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     return (
       <main className="wide">
         <p className="back"><Link href="/">← Ask something else</Link></p>
-        <h1 className="question">{project.question}</h1>
+        <h1 className="question">{cleanTitle(project.question, project.title)}</h1>
         <Progress
           projectId={id}
           question={project.question}
@@ -45,7 +46,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   return (
     <main>
       <p className="back"><Link href="/">← Ask something else</Link></p>
-      <h1 className="question">{project.question}</h1>
+      <h1 className="question">{cleanTitle(project.question, project.title)}</h1>
       {/* Captions are burned into the video; the .srt is offered as a download. */}
       <video className="player" src={videoUrl} poster={poster} controls playsInline preload="metadata" />
 
