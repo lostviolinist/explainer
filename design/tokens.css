@@ -1,0 +1,71 @@
+/* Unfold design tokens. Dark theme only (no light theme was designed). */
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap");
+
+:root {
+  /* Surfaces */
+  --bg: #0D0D10;            /* page background */
+  --surface: #16161B;       /* cards, panels, composer */
+  --surface-raised: #1E1E25;/* chips, inactive buttons, hover rows */
+  --surface-active: #24242C;/* selected tab, number badges, progress track */
+  --divider: #22222A;       /* lines inside cards */
+  --border: #2A2A33;        /* card and control borders */
+  --border-strong: #3A3A45; /* secondary button borders, focus */
+  --paper: #F4EFE4;         /* illustrated video frames, title cards */
+
+  /* Text */
+  --text: #F2F1EE;
+  --text-2: #D6D5DC;        /* body copy on cards */
+  --text-3: #B4B3BD;        /* secondary copy, inactive tabs */
+  --muted: #8A8995;         /* labels, meta, timestamps (4.5:1 on --surface) */
+  --text-on-paper: #2B2B2B;
+  --muted-on-paper: #6B665C;
+
+  /* Accent (one accent; alternates tested: #F2B544, #6FD3C1, #FF8FB1) */
+  --accent: #A99BFF;
+  --on-accent: #0D0D10;
+  --accent-soft: rgba(169, 155, 255, 0.12);  /* selected backgrounds */
+  --accent-ring: rgba(169, 155, 255, 0.45);  /* selected borders */
+  --accent-light: #DDD7FF;  /* logo flap */
+
+  /* Status */
+  --success: #6FD3C1;       /* "Right, it's a myth." */
+  --nudge: #FFB37A;         /* "Not quite" */
+  --warn: #F2B544;          /* retrying, setup-check banner */
+  --error: #FF9B8A;         /* stopped, didn't draw */
+  --warn-bg: rgba(242, 181, 68, 0.10);
+  --warn-border: rgba(242, 181, 68, 0.45);
+  --edit-tint: #4A3F75;     /* scenes built in the edit (rough-cut strip) */
+
+  /* Scene-type tags: text color; background is the same color at 14% alpha */
+  --tag-hook: #FF8FB1;
+  --tag-grounding: #B4B3BD;
+  --tag-myth-buster: #F2B544;
+  --tag-build-up: #8EC5FF;
+  --tag-core-idea: #A99BFF;
+  --tag-payoff: #FFB37A;
+  --tag-recap: #6FD3C1;
+
+  /* Type */
+  --font-display: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace; /* times, counts, percentages */
+  --text-hero: clamp(44px, 6vw, 84px);   /* weight 700, line-height 1, letter-spacing -0.025em */
+  --text-title: clamp(30px, 3.4vw, 44px);/* page h1: 700, 1.08, -0.02em */
+  --text-section: 28px;                  /* "Did it land?", "Made here recently": 650, -0.02em */
+  --text-card-title: 16px;               /* card headings: 600 */
+  --text-body: 16px;                     /* line-height 1.5 */
+  --text-small: 14px;
+  --text-meta: 13px;
+  --text-label: 12px;                    /* uppercase, 600, letter-spacing 0.08em */
+
+  /* Shape and spacing */
+  --radius-card: 18px;
+  --radius-composer: 20px;
+  --radius-thumb: 14px;
+  --radius-control: 10px;   /* buttons, inputs (12px for large buttons) */
+  --radius-pill: 999px;
+  --touch: 44px;            /* minimum height for anything clickable */
+  --page-max-home: 1200px;
+  --page-max: 1280px;       /* Being made, Watch */
+  --gutter: 24px;
+}

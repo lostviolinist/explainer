@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unfold home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0D0D10}
+a{color:#F2F1EE;text-decoration:none}a:hover{color:#FFFFFF}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.q-input::placeholder{color:#8A8995}
+.q-input:focus{outline:none}
+.composer:focus-within{border-color:#4A4A57 !important}
+.chip:hover{background:#24242C !important;border-color:#3A3A45 !important}
+.card .thumb{transition:transform .2s ease, box-shadow .2s ease}
+.card:hover .thumb{transform:translateY(-3px);box-shadow:0 0 0 1px #3A3A45}
+.card:hover h3{text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1px}
+@media (max-width: 960px){.recent-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important}}
+@media (max-width: 600px){.recent-grid{grid-template-columns:minmax(0,1fr) !important}.feature{grid-column:auto !important;grid-row:auto !important}.hide-sm{display:none !important}}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #0D0D10; color: #F2F1EE; font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; font-size: 16px; line-height: 1.5;">
+
+<header style="max-width: 1200px; margin: 0 auto; padding: 20px 24px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; min-height: 44px; color: #F2F1EE; font-family: 'Instrument Sans', sans-serif; font-weight: 650; font-size: 21px; letter-spacing: -0.01em;">
+<sc-if value="{{markCorner}}" hint-placeholder-val="{{true}}"><svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><path d="M12.9 8 L27 16 L6 28 L6 12 Z" fill="{{accent}}" stroke="{{accent}}" stroke-width="2.5" stroke-linejoin="round"></path><path d="M6 12 L12.9 8 L13 15.9 Z" fill="{{accentLight}}" stroke="{{accentLight}}" stroke-width="1.5" stroke-linejoin="round"></path></svg></sc-if>
+<sc-if value="{{markHalf}}" hint-placeholder-val="{{false}}"><svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 4 L27 16 L6 16 Z" fill="{{accent}}" stroke="{{accent}}" stroke-width="2.5" stroke-linejoin="round"></path><path d="M6 16 L27 16 L7.5 26.5 Z" fill="{{accentDeep}}" stroke="{{accentDeep}}" stroke-width="2.5" stroke-linejoin="round"></path></svg></sc-if>
+Unfold
+</a>
+<nav aria-label="Main" style="display: flex; gap: 4px;">
+<a href="#recent" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 10px; color: #B4B3BD; font-size: 15px;">Recent</a>
+</nav>
+</header>
+
+<main>
+<section aria-labelledby="hero-h" style="max-width: 1200px; margin: 0 auto; padding: 72px 24px 0; box-sizing: border-box;">
+<h1 id="hero-h" style="margin: 0; max-width: 900px; font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: clamp(44px, 6vw, 84px); line-height: 1; letter-spacing: -0.025em;">What do you want to <span style="color: {{accent}};">understand</span>?</h1>
+<p style="margin: 24px 0 0; max-width: 560px; font-size: 19px; line-height: 1.55; color: #B4B3BD;">Type a topic or a question. In about ten minutes you get a short animated explainer, researched and sourced, and you can watch it being made.</p>
+
+<sc-if value="{{setupIssue}}" hint-placeholder-val="{{false}}">
+<div role="status" style="margin-top: 32px; max-width: 880px; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 16px; border-radius: 14px; background: rgba(242,181,68,0.10); border: 1px solid rgba(242,181,68,0.45);">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F2B544" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto;"><path d="M12 3.5L2.5 20h19z"></path><path d="M12 10v4.5M12 17.2h.01"></path></svg>
+<div style="flex: 1 1 360px; min-width: 0;">
+<p style="margin: 0; font-size: 15px; font-weight: 600; color: #F2F1EE;">Can’t start new videos right now</p>
+<p style="margin: 2px 0 0; font-size: 14px; line-height: 1.5; color: #D6D5DC;">{{setupDetail}}</p>
+</div>
+<button type="button" onClick="{{checkAgain}}" class="chip" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #3A3A45; background: transparent; color: #F2F1EE; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">{{checkLabel}}</button>
+</div>
+</sc-if>
+<div class="composer" style="margin-top: 40px; max-width: 880px; background: #16161B; border: 1px solid #2A2A33; border-radius: 20px; padding: 8px; box-sizing: border-box;">
+<label for="q" class="sr-only">Your question</label>
+<textarea id="q" class="q-input" rows="2" placeholder="How do noise-cancelling headphones work?" value="{{query}}" onChange="{{onQuery}}" style="display: block; width: 100%; box-sizing: border-box; resize: none; background: transparent; border: 0; color: #F2F1EE; font-family: inherit; font-size: 22px; line-height: 1.4; padding: 16px 16px 6px;"></textarea>
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 8px;">
+<fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0;">
+<legend class="sr-only">Video style</legend>
+<button type="button" aria-pressed="{{illusPressed}}" onClick="{{pickIllus}}" style="display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 14px 6px 6px; border-radius: 12px; border: 1px solid {{illusBorder}}; background: {{illusBg}}; color: #F2F1EE; font-family: inherit; font-size: 14px; cursor: pointer; text-align: left;">
+<svg width="44" height="32" viewBox="0 0 44 32" aria-hidden="true" style="display: block; border-radius: 7px;"><rect width="44" height="32" fill="#F4EFE4"></rect><circle cx="31" cy="11" r="5" fill="#E9B730"></circle><path d="M0 32 L0 22 Q11 13 22 21 T44 19 L44 32 Z" fill="#81B29A"></path></svg>
+<span style="display: flex; flex-direction: column; line-height: 1.25;"><span style="font-weight: 600;">Illustrated</span><span style="font-size: 12px; color: #8A8995;">Flat art and motion graphics</span></span>
+</button>
+<button type="button" aria-pressed="{{mathPressed}}" onClick="{{pickMath}}" style="display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 14px 6px 6px; border-radius: 12px; border: 1px solid {{mathBorder}}; background: {{mathBg}}; color: #F2F1EE; font-family: inherit; font-size: 14px; cursor: pointer; text-align: left;">
+<svg width="44" height="32" viewBox="0 0 44 32" aria-hidden="true" style="display: block; border-radius: 7px;"><rect width="44" height="32" fill="#0B0B0B"></rect><path d="M6 26 H40 M8 4 V28" stroke="#5A5A5A" stroke-width="1"></path><path d="M8 25 C16 25 18 8 25 8 S34 20 40 16" stroke="#58C4DD" stroke-width="2.2" fill="none"></path></svg>
+<span style="display: flex; flex-direction: column; line-height: 1.25;"><span style="font-weight: 600;">Mathematical</span><span style="font-size: 12px; color: #8A8995;">Equations and graphs, in Manim</span></span>
+</button>
+</fieldset>
+<div style="display: flex; align-items: center; gap: 14px; margin-left: auto;">
+<span class="hide-sm" style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px; color: #8A8995;">about 10 min</span>
+<sc-if value="{{canStart}}" hint-placeholder-val="{{true}}"><a href="Making.dc.html" style="display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 12px; background: {{accent}}; color: #0D0D10; font-weight: 600; font-size: 16px;">Explain it<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a></sc-if>
+<sc-if value="{{setupIssue}}" hint-placeholder-val="{{false}}"><button type="button" disabled style="display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 12px; border: 1px solid #2A2A33; background: #1E1E25; color: #8A8995; font-family: inherit; font-weight: 600; font-size: 16px; cursor: not-allowed;">Explain it</button></sc-if>
+</div>
+</div>
+</div>
+
+<div style="margin-top: 20px; max-width: 880px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+<span style="font-size: 14px; color: #8A8995; margin-right: 4px;">Try</span>
+<button type="button" class="chip" onClick="{{useExample}}" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #2A2A33; background: #16161B; color: #D6D5DC; font-family: inherit; font-size: 14px; cursor: pointer;">Why is the sky blue?</button>
+<button type="button" class="chip" onClick="{{useExample}}" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #2A2A33; background: #16161B; color: #D6D5DC; font-family: inherit; font-size: 14px; cursor: pointer;">How do vaccines train the immune system?</button>
+<button type="button" class="chip" onClick="{{useExample}}" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #2A2A33; background: #16161B; color: #D6D5DC; font-family: inherit; font-size: 14px; cursor: pointer;">What is a Fourier transform?</button>
+<button type="button" class="chip" onClick="{{useExample}}" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #2A2A33; background: #16161B; color: #D6D5DC; font-family: inherit; font-size: 14px; cursor: pointer;">How does compound interest work?</button>
+</div>
+</section>
+
+<section aria-labelledby="wip-h" style="max-width: 1200px; margin: 0 auto; padding: 96px 24px 0; box-sizing: border-box;">
+<h2 id="wip-h" style="margin: 0 0 14px; font-size: 16px; font-weight: 600;">Still being made</h2>
+<a href="Making.dc.html" class="card" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; padding: 16px 20px 16px 16px; border-radius: 16px; background: #16161B; border: 1px solid #2A2A33; color: #F2F1EE;">
+<span class="thumb" style="flex: 0 0 120px; height: 68px; border-radius: 10px; overflow: hidden; background: #F4EFE4; display: grid; place-items: center;"><svg width="120" height="68" viewBox="0 0 120 68" aria-hidden="true"><g stroke="#B9CBE6" stroke-width="1.5" fill="none"><path d="M40 20 L60 34 L80 20 M40 34 L60 20 L80 34 M40 48 L60 34 L80 48 M40 34 L60 48 L80 34"></path></g><g fill="#9DBBE3"><circle cx="40" cy="20" r="6"></circle><circle cx="40" cy="34" r="6"></circle><circle cx="40" cy="48" r="6"></circle><circle cx="60" cy="20" r="6"></circle><circle cx="60" cy="34" r="6"></circle><circle cx="60" cy="48" r="6"></circle><circle cx="80" cy="20" r="6"></circle><circle cx="80" cy="34" r="6"></circle><circle cx="80" cy="48" r="6"></circle></g></svg></span>
+<span style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em;">What is backpropagation?</span>
+<span style="display: flex; align-items: center; gap: 12px;"><span style="flex: 1 1 auto; max-width: 420px; height: 6px; border-radius: 3px; background: #24242C; overflow: hidden;"><span style="display: block; width: 60%; height: 100%; border-radius: 3px; background: {{accent}};"></span></span><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px; color: #B4B3BD;">60%</span></span>
+<span style="font-size: 14px; color: #B4B3BD;">Illustrating · 1 of 11 scenes ready · about 7–9 min left</span>
+</span>
+<span style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #3A3A45; font-size: 15px; font-weight: 600;">Watch it being made<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></span>
+</a>
+</section>
+
+<section id="recent" aria-labelledby="recent-h" style="max-width: 1200px; margin: 0 auto; padding: 56px 24px 0; box-sizing: border-box;">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 24px; padding-top: 28px; border-top: 1px solid #2A2A33;">
+<h2 id="recent-h" style="margin: 0; font-family: 'Instrument Sans', sans-serif; font-size: 28px; font-weight: 650; letter-spacing: -0.02em;">Made here recently</h2>
+<p style="margin: 0; font-size: 14px; color: #8A8995;">Open one to watch it, quiz yourself and check the sources</p>
+</div>
+
+<div class="recent-grid" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px 24px;">
+
+<a href="Watch.dc.html" class="card feature" style="grid-column: span 2; grid-row: span 2; display: flex; flex-direction: column; gap: 14px; color: #F2F1EE;">
+<div class="thumb" style="position: relative; flex: 1 1 auto; min-height: 260px; border-radius: 16px; overflow: hidden; background: #F4EFE4;">
+<svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block;">
+<rect width="640" height="360" fill="#F4EFE4"></rect>
+<rect x="66" y="116" width="118" height="138" rx="6" fill="#FFFFFF" transform="rotate(-6 125 185)"></rect>
+<rect x="76" y="126" width="98" height="100" fill="#EFE6D4" transform="rotate(-6 125 185)"></rect>
+<g transform="rotate(-6 125 185)"><ellipse cx="125" cy="205" rx="27" ry="18" fill="#E9B730"></ellipse><circle cx="125" cy="176" r="15" fill="#E9B730"></circle><path d="M112 168 L115 152 L123 164 Z M127 164 L135 152 L138 168 Z" fill="#E9B730"></path></g>
+<g stroke="#B9CBE6" stroke-width="3"><path d="M240 120 L320 120 M240 120 L320 180 M240 180 L320 120 M240 180 L320 180 M240 180 L320 240 M240 240 L320 180 M240 240 L320 240"></path><path d="M320 120 L400 120 M320 120 L400 180 M320 180 L400 120 M320 180 L400 180 M320 180 L400 240 M320 240 L400 180 M320 240 L400 240"></path></g>
+<g fill="#9DBBE3"><circle cx="240" cy="120" r="20"></circle><circle cx="240" cy="180" r="20"></circle><circle cx="240" cy="240" r="20"></circle><circle cx="320" cy="120" r="20"></circle><circle cx="320" cy="180" r="20"></circle><circle cx="320" cy="240" r="20"></circle><circle cx="400" cy="120" r="20"></circle><circle cx="400" cy="180" r="20"></circle><circle cx="400" cy="240" r="20"></circle></g>
+<g fill="#F2CC5B"><circle cx="280" cy="150" r="8"></circle><circle cx="360" cy="210" r="8"></circle><circle cx="280" cy="210" r="8"></circle><circle cx="360" cy="150" r="8"></circle></g>
+<rect x="210" y="282" width="220" height="12" rx="6" fill="#E3DACB"></rect>
+<rect x="452" y="150" width="112" height="92" rx="22" fill="#FFFFFF"></rect><path d="M466 210 L440 222 L472 226 Z" fill="#FFFFFF"></path>
+<ellipse cx="487" cy="194" rx="8" ry="15" fill="#C9922A"></ellipse><ellipse cx="529" cy="194" rx="8" ry="15" fill="#C9922A"></ellipse><circle cx="508" cy="196" r="22" fill="#E9B730"></circle><circle cx="508" cy="204" r="4" fill="#5E4520"></circle>
+<path d="M480 92 A40 40 0 0 1 560 92" fill="none" stroke="#E3DACB" stroke-width="10" stroke-linecap="round"></path><path d="M548.3 63.7 A40 40 0 0 1 560 92" fill="none" stroke="#E07A5F" stroke-width="10" stroke-linecap="round"></path><path d="M520 92 L547 68" stroke="#C9382E" stroke-width="5" stroke-linecap="round"></path><circle cx="520" cy="92" r="6" fill="#C9382E"></circle>
+</svg>
+<span style="position: absolute; right: 12px; bottom: 12px; padding: 3px 8px; border-radius: 6px; background: rgba(13,13,16,0.82); color: #F2F1EE; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px;">3:30</span>
+</div>
+<div>
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.25;">What is backpropagation?</h3>
+<p style="margin: 6px 0 0; font-size: 14px; color: #8A8995;">Illustrated · 14 sources</p>
+</div>
+</a>
+
+<a href="Watch.dc.html" class="card" style="display: flex; flex-direction: column; gap: 12px; color: #F2F1EE;">
+<div class="thumb" style="position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #F4EFE4;">
+<svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block;">
+<rect width="640" height="360" fill="#F4EFE4"></rect>
+<g transform="translate(140 118) rotate(-10)"><path d="M0 -78 C46 -44 46 34 0 78 C-46 34 -46 -44 0 -78 Z" fill="#E9B730"></path><path d="M0 -64 L0 96" stroke="#B98A14" stroke-width="3" fill="none" stroke-linecap="round"></path></g>
+<g transform="translate(260 112) rotate(6)"><path d="M0 -78 C46 -44 46 34 0 78 C-46 34 -46 -44 0 -78 Z" fill="#E8832A"></path><path d="M0 -64 L0 96" stroke="#B8601A" stroke-width="3" fill="none" stroke-linecap="round"></path></g>
+<g transform="translate(380 118) rotate(-4)"><path d="M0 -78 C46 -44 46 34 0 78 C-46 34 -46 -44 0 -78 Z" fill="#C9382E"></path><path d="M0 -64 L0 96" stroke="#8F2219" stroke-width="3" fill="none" stroke-linecap="round"></path></g>
+<g transform="translate(500 112) rotate(12)"><path d="M0 -78 C46 -44 46 34 0 78 C-46 34 -46 -44 0 -78 Z" fill="#A8BC8A"></path><path d="M0 -64 L0 96" stroke="#7F9465" stroke-width="3" fill="none" stroke-linecap="round"></path></g>
+<rect x="100" y="246" width="80" height="6" rx="3" fill="#E3DACB"></rect><circle cx="116" cy="249" r="7" fill="#2B2B2B"></circle>
+<rect x="220" y="246" width="80" height="6" rx="3" fill="#E3DACB"></rect><circle cx="242" cy="249" r="7" fill="#2B2B2B"></circle>
+<rect x="340" y="246" width="80" height="6" rx="3" fill="#E3DACB"></rect><circle cx="410" cy="249" r="7" fill="#2B2B2B"></circle>
+<rect x="460" y="246" width="80" height="6" rx="3" fill="#E3DACB"></rect><circle cx="468" cy="249" r="7" fill="#2B2B2B"></circle>
+<g><circle cx="113" cy="280" r="6" fill="#7C9A5A"></circle><circle cx="131" cy="280" r="9" fill="#E9B730"></circle><circle cx="149" cy="280" r="6" fill="#E8832A"></circle><circle cx="167" cy="280" r="6" fill="#C9382E"></circle></g>
+<g><circle cx="233" cy="280" r="6" fill="#7C9A5A"></circle><circle cx="251" cy="280" r="6" fill="#E9B730"></circle><circle cx="269" cy="280" r="9" fill="#E8832A"></circle><circle cx="287" cy="280" r="6" fill="#C9382E"></circle></g>
+<g><circle cx="353" cy="280" r="6" fill="#7C9A5A"></circle><circle cx="371" cy="280" r="6" fill="#E9B730"></circle><circle cx="389" cy="280" r="6" fill="#E8832A"></circle><circle cx="407" cy="280" r="9" fill="#C9382E"></circle></g>
+<g><circle cx="473" cy="280" r="9" fill="#7C9A5A"></circle><circle cx="491" cy="280" r="6" fill="#E9B730"></circle><circle cx="509" cy="280" r="6" fill="#E8832A"></circle><circle cx="527" cy="280" r="6" fill="#C9382E"></circle></g>
+</svg>
+<span style="position: absolute; right: 10px; bottom: 10px; padding: 2px 7px; border-radius: 6px; background: rgba(13,13,16,0.82); color: #F2F1EE; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px;">4:01</span>
+</div>
+<div>
+<h3 style="margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35;">Why do leaves change color in the fall?</h3>
+<p style="margin: 4px 0 0; font-size: 13px; color: #8A8995;">Illustrated</p>
+</div>
+</a>
+
+<a href="Watch.dc.html" class="card" style="display: flex; flex-direction: column; gap: 12px; color: #F2F1EE;">
+<div class="thumb" style="position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #F4EFE4;">
+<svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block;">
+<rect width="640" height="360" fill="#F4EFE4"></rect>
+<path d="M266 104 L266 58 L293 80 L320 44 L347 80 L374 58 L374 104 Z" fill="#D9A441"></path>
+<rect x="260" y="100" width="120" height="16" rx="4" fill="#B98A14"></rect>
+<circle cx="290" cy="108" r="4" fill="#B23A3A"></circle><circle cx="320" cy="108" r="4" fill="#3D7EA6"></circle><circle cx="350" cy="108" r="4" fill="#B23A3A"></circle>
+<circle cx="320" cy="170" r="40" fill="#B23A3A"></circle><circle cx="361.8" cy="200.4" r="40" fill="#B23A3A"></circle><circle cx="345.9" cy="249.6" r="40" fill="#B23A3A"></circle><circle cx="294.1" cy="249.6" r="40" fill="#B23A3A"></circle><circle cx="278.2" cy="200.4" r="40" fill="#B23A3A"></circle>
+<circle cx="332.9" cy="196.2" r="22" fill="#FFFFFF"></circle><circle cx="340.9" cy="220.8" r="22" fill="#FFFFFF"></circle><circle cx="320" cy="236" r="22" fill="#FFFFFF"></circle><circle cx="299.1" cy="220.8" r="22" fill="#FFFFFF"></circle><circle cx="307.1" cy="196.2" r="22" fill="#FFFFFF"></circle>
+<circle cx="320" cy="214" r="14" fill="#D9A441"></circle>
+</svg>
+<span style="position: absolute; right: 10px; bottom: 10px; padding: 2px 7px; border-radius: 6px; background: rgba(13,13,16,0.82); color: #F2F1EE; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px;">4:04</span>
+</div>
+<div>
+<h3 style="margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35;">Who was Henry VIII?</h3>
+<p style="margin: 4px 0 0; font-size: 13px; color: #8A8995;">Illustrated</p>
+</div>
+</a>
+
+<a href="Watch.dc.html" class="card" style="display: flex; flex-direction: column; gap: 12px; color: #F2F1EE;">
+<div class="thumb" style="position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #F4EFE4;">
+<svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block;">
+<rect width="640" height="360" fill="#F4EFE4"></rect>
+<path d="M188 282 Q 248 226 308 282" stroke="#E07A5F" stroke-width="4" fill="none"></path>
+<path d="M248 282 Q 338 206 428 282" stroke="#E07A5F" stroke-width="4" fill="none" opacity="0.55"></path>
+<rect x="170" y="282" width="36" height="36" rx="8" fill="#3D7EA6"></rect><rect x="230" y="282" width="36" height="36" rx="8" fill="#3D7EA6" opacity="0.8"></rect><rect x="290" y="282" width="36" height="36" rx="8" fill="#3D7EA6"></rect><rect x="350" y="282" width="36" height="36" rx="8" fill="#3D7EA6" opacity="0.7"></rect><rect x="410" y="282" width="36" height="36" rx="8" fill="#3D7EA6"></rect>
+<rect x="214" y="200" width="212" height="40" rx="10" fill="#81B29A"></rect>
+<rect x="222" y="154" width="212" height="40" rx="10" fill="#F2CC8F"></rect>
+<rect x="230" y="108" width="212" height="40" rx="10" fill="#E07A5F"></rect>
+<rect x="238" y="62" width="212" height="40" rx="10" fill="#3D7EA6"></rect>
+<circle cx="510" cy="64" r="28" fill="#E07A5F"></circle><path d="M490 82 L482 100 L502 88 Z" fill="#E07A5F"></path>
+</svg>
+<span style="position: absolute; right: 10px; bottom: 10px; padding: 2px 7px; border-radius: 6px; background: rgba(13,13,16,0.82); color: #F2F1EE; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px;">4:21</span>
+</div>
+<div>
+<h3 style="margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35;">What is a transformer model?</h3>
+<p style="margin: 4px 0 0; font-size: 13px; color: #8A8995;">Illustrated</p>
+</div>
+</a>
+
+<a href="Watch.dc.html" class="card" style="display: flex; flex-direction: column; gap: 12px; color: #F2F1EE;">
+<div class="thumb" style="position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #0B0B0B;">
+<svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block;">
+<defs><pattern id="home-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#1C2833" stroke-width="1"></path></pattern></defs>
+<rect width="640" height="360" fill="#0B0B0B"></rect>
+<rect width="640" height="360" fill="url(#home-grid)"></rect>
+<path d="M80 280 H580 M120 60 V310" stroke="#8A8A8A" stroke-width="2"></path>
+<path d="M120 270 C 200 270, 230 110, 300 110 S 400 260, 460 220 S 530 140, 570 130" stroke="#58C4DD" stroke-width="5" fill="none"></path>
+<circle cx="300" cy="110" r="9" fill="#F4D35E"></circle><circle cx="460" cy="220" r="9" fill="#FC6255"></circle>
+<text x="340" y="78" fill="#F2F1EE" font-family="Georgia, serif" font-style="italic" font-size="30">softmax(QKᵀ/√d)</text>
+</svg>
+<span style="position: absolute; right: 10px; bottom: 10px; padding: 2px 7px; border-radius: 6px; background: rgba(242,241,238,0.14); color: #F2F1EE; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px;">3:57</span>
+</div>
+<div>
+<h3 style="margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35;">What is a transformer model?</h3>
+<p style="margin: 4px 0 0; font-size: 13px; color: #8A8995;">Mathematical</p>
+</div>
+</a>
+
+</div>
+<div style="margin-top: 28px; display: flex; justify-content: center;">
+<button type="button" class="chip" style="min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #2A2A33; background: #16161B; color: #D6D5DC; font-family: inherit; font-size: 14px; cursor: pointer;">Show all 6</button>
+</div>
+</section>
+</main>
+
+<footer style="max-width: 1200px; margin: 0 auto; padding: 96px 24px 48px; box-sizing: border-box; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; font-size: 13px; color: #8A8995;">
+<span>Unfold</span>
+<span>Every video is researched, checked and cites its sources.</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#A99BFF","options":["#A99BFF","#F2B544","#6FD3C1","#FF8FB1"]},"mark":{"editor":"enum","options":["corner","half"],"default":"corner"},"status":{"editor":"enum","options":["ok","setup"],"default":"ok"},"$preview":{"width":1440,"height":1880}}'>
+class Component extends DCLogic {
+  hexA(hex, a) {
+    const h = String(hex || '').replace('#', '');
+    const f = h.length === 3 ? h.split('').map(function (c) { return c + c; }).join('') : h.slice(0, 6);
+    const n = parseInt(f, 16);
+    if (isNaN(n)) return 'rgba(169,155,255,' + a + ')';
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+  tint(hex, t) {
+    const c = this.hexA(hex, 1).match(/\d+/g);
+    return 'rgb(' + Math.round(+c[0] + (255 - c[0]) * t) + ',' + Math.round(+c[1] + (255 - c[1]) * t) + ',' + Math.round(+c[2] + (255 - c[2]) * t) + ')';
+  }
+  shade(hex, t) {
+    const c = this.hexA(hex, 1).match(/\d+/g);
+    const k = 1 - t;
+    return 'rgb(' + Math.round(c[0] * k) + ',' + Math.round(c[1] * k) + ',' + Math.round(c[2] * k) + ')';
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#A99BFF';
+    const st = this.state || {};
+    const style = st.style || 'illustrated';
+    const soft = this.hexA(accent, 0.12);
+    const isIllus = style === 'illustrated';
+    const setupIssue = (this.props.status ?? 'ok') === 'setup';
+    const checking = !!st.checking;
+    return {
+      accent: accent,
+      accentDeep: this.shade(accent, 0.4),
+      accentLight: this.tint(accent, 0.6),
+      markCorner: (this.props.mark ?? 'corner') !== 'half',
+      markHalf: (this.props.mark ?? 'corner') === 'half',
+      setupIssue: setupIssue,
+      canStart: !setupIssue,
+      setupDetail: checking ? 'Checking the setup (OpenAI, Exa, Hedra, storage, renderer, animators)…' : 'The setup check couldn’t reach the renderer. Everything below still plays.',
+      checkLabel: checking ? 'Checking…' : 'Check again',
+      checkAgain: () => this.setState({ checking: true }),
+      query: st.query ?? '',
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      useExample: (e) => this.setState({ query: (e.currentTarget.textContent || '').trim() }),
+      illusPressed: isIllus,
+      mathPressed: !isIllus,
+      illusBorder: isIllus ? accent : '#2A2A33',
+      illusBg: isIllus ? soft : 'transparent',
+      mathBorder: !isIllus ? accent : '#2A2A33',
+      mathBg: !isIllus ? soft : 'transparent',
+      pickIllus: () => this.setState({ style: 'illustrated' }),
+      pickMath: () => this.setState({ style: 'math' })
+    };
+  }
+}
+</script>
+</body>
+</html>

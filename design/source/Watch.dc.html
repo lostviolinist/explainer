@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unfold watch page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0D0D10}
+a{color:#F2F1EE;text-decoration:none}a:hover{color:#FFFFFF}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.q-input::placeholder{color:#8A8995}
+.q-input:focus{outline:none}
+.composer:focus-within{border-color:#4A4A57 !important}
+.ghost:hover{background:#1E1E25 !important;color:#FFFFFF !important}
+.para:hover{background:#1E1E25 !important}
+.src:hover{background:#1E1E25 !important}
+.src:hover .src-title{text-decoration:underline;text-underline-offset:3px}
+@media (max-width: 600px){.hide-sm{display:none !important}.mav-label{flex-basis:100%;margin:4px 0 2px}}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #0D0D10; color: #F2F1EE; font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; font-size: 16px; line-height: 1.5;">
+
+<header style="max-width: 1280px; margin: 0 auto; padding: 20px 24px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; min-height: 44px; color: #F2F1EE; font-family: 'Instrument Sans', sans-serif; font-weight: 650; font-size: 21px; letter-spacing: -0.01em;">
+<sc-if value="{{markCorner}}" hint-placeholder-val="{{true}}"><svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><path d="M12.9 8 L27 16 L6 28 L6 12 Z" fill="{{accent}}" stroke="{{accent}}" stroke-width="2.5" stroke-linejoin="round"></path><path d="M6 12 L12.9 8 L13 15.9 Z" fill="{{accentLight}}" stroke="{{accentLight}}" stroke-width="1.5" stroke-linejoin="round"></path></svg></sc-if>
+<sc-if value="{{markHalf}}" hint-placeholder-val="{{false}}"><svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 4 L27 16 L6 16 Z" fill="{{accent}}" stroke="{{accent}}" stroke-width="2.5" stroke-linejoin="round"></path><path d="M6 16 L27 16 L7.5 26.5 Z" fill="{{accentDeep}}" stroke="{{accentDeep}}" stroke-width="2.5" stroke-linejoin="round"></path></svg></sc-if>
+Unfold
+</a>
+<nav aria-label="Main" style="display: flex; gap: 4px;">
+<a href="Main.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 10px; color: #B4B3BD; font-size: 15px;">Recent</a>
+</nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 0 24px 96px; box-sizing: border-box;">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: #B4B3BD; font-size: 15px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>New question</a>
+
+<div style="margin-top: 8px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 40px;">
+
+<div style="flex: 999 1 560px; min-width: 0;">
+
+<div style="position: relative; aspect-ratio: 16 / 9; border-radius: 18px; overflow: hidden; background: #F4EFE4; box-shadow: 0 0 0 1px #2A2A33;">
+<svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block;">
+<rect width="640" height="360" fill="#F4EFE4"></rect>
+<rect x="66" y="116" width="118" height="138" rx="6" fill="#FFFFFF" transform="rotate(-6 125 185)"></rect>
+<rect x="76" y="126" width="98" height="100" fill="#EFE6D4" transform="rotate(-6 125 185)"></rect>
+<g transform="rotate(-6 125 185)"><ellipse cx="125" cy="205" rx="27" ry="18" fill="#E9B730"></ellipse><circle cx="125" cy="176" r="15" fill="#E9B730"></circle><path d="M112 168 L115 152 L123 164 Z M127 164 L135 152 L138 168 Z" fill="#E9B730"></path></g>
+<g stroke="#B9CBE6" stroke-width="3">
+<path d="M240 120 L320 120 M240 120 L320 180 M240 180 L320 120 M240 180 L320 180 M240 180 L320 240 M240 240 L320 180 M240 240 L320 240"></path>
+<path d="M320 120 L400 120 M320 120 L400 180 M320 180 L400 120 M320 180 L400 180 M320 180 L400 240 M320 240 L400 180 M320 240 L400 240"></path>
+</g>
+<g fill="#9DBBE3"><circle cx="240" cy="120" r="20"></circle><circle cx="240" cy="180" r="20"></circle><circle cx="240" cy="240" r="20"></circle><circle cx="320" cy="120" r="20"></circle><circle cx="320" cy="180" r="20"></circle><circle cx="320" cy="240" r="20"></circle><circle cx="400" cy="120" r="20"></circle><circle cx="400" cy="180" r="20"></circle><circle cx="400" cy="240" r="20"></circle></g>
+<g fill="#F2CC5B"><circle cx="280" cy="150" r="8"></circle><circle cx="360" cy="210" r="8"></circle><circle cx="280" cy="210" r="8"></circle><circle cx="360" cy="150" r="8"></circle></g>
+<rect x="210" y="282" width="220" height="12" rx="6" fill="#E3DACB"></rect>
+<rect x="452" y="150" width="112" height="92" rx="22" fill="#FFFFFF"></rect>
+<path d="M466 210 L440 222 L472 226 Z" fill="#FFFFFF"></path>
+<ellipse cx="487" cy="194" rx="8" ry="15" fill="#C9922A"></ellipse><ellipse cx="529" cy="194" rx="8" ry="15" fill="#C9922A"></ellipse>
+<circle cx="508" cy="196" r="22" fill="#E9B730"></circle><circle cx="508" cy="204" r="4" fill="#5E4520"></circle>
+<path d="M480 92 A40 40 0 0 1 560 92" fill="none" stroke="#E3DACB" stroke-width="10" stroke-linecap="round"></path>
+<path d="M548.3 63.7 A40 40 0 0 1 560 92" fill="none" stroke="#E07A5F" stroke-width="10" stroke-linecap="round"></path>
+<path d="M520 92 L547 68" stroke="#C9382E" stroke-width="5" stroke-linecap="round"></path><circle cx="520" cy="92" r="6" fill="#C9382E"></circle>
+</svg>
+
+<div style="position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 12px 10px 6px; border-radius: 14px; background: rgba(13,13,16,0.86); color: #FFFFFF;">
+<div style="position: relative; height: 6px; margin: 0 8px; border-radius: 3px; background: rgba(255,255,255,0.22);">
+<div style="position: absolute; left: 0; top: 0; bottom: 0; width: {{progress}}; border-radius: 3px; background: {{accent}};"></div>
+<sc-for list="{{ticks}}" as="tk" hint-placeholder-count="6"><span style="position: absolute; top: 0; bottom: 0; left: {{tk.left}}; width: 2px; background: #0D0D10;"></span></sc-for>
+<span style="position: absolute; top: 50%; left: {{progress}}; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 999px; background: #FFFFFF;"></span>
+</div>
+<div style="margin-top: 6px; display: flex; align-items: center; gap: 2px;">
+<button type="button" aria-label="Play" style="width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 999px; background: transparent; color: #FFFFFF; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"></path></svg></button>
+<span style="margin-left: 4px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px; color: #FFFFFF;">{{timeLabel}} / 3:30</span>
+<span style="flex: 1 1 auto;"></span>
+<button type="button" aria-label="Captions" style="width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: #FFFFFF; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"></rect><path d="M10.5 10.2a2 2 0 1 0 0 3.6M17 10.2a2 2 0 1 0 0 3.6"></path></svg></button>
+<button type="button" aria-label="Volume" class="hide-sm" style="width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: #FFFFFF; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"></path><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"></path></svg></button>
+<button type="button" aria-label="Full screen" style="width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: #FFFFFF; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button>
+</div>
+</div>
+</div>
+
+<h1 style="margin: 28px 0 0; font-family: 'Instrument Sans', sans-serif; font-size: clamp(30px, 3.4vw, 44px); font-weight: 700; letter-spacing: -0.02em; line-height: 1.08;">What is backpropagation?</h1>
+<div style="margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; font-size: 14px; color: #B4B3BD;">
+<span style="padding: 4px 10px; border-radius: 999px; background: #1E1E25; border: 1px solid #2A2A33; color: #F2F1EE; font-weight: 500;">Illustrated</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px;">3:30</span>
+<span>14 sources</span>
+<span title="Search, writing, voice, pictures and the checks" style="display: inline-flex; align-items: center; gap: 6px;">$1.63 to make<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg></span>
+</div>
+
+<div style="margin-top: 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 6px 6px 16px; border: 1px solid #2A2A33; border-radius: 14px; background: #16161B;">
+<span class="mav-label" style="font-size: 14px; color: #B4B3BD; margin-right: 4px;">Make another version</span>
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid {{accentRing}}; background: {{accentSoft}}; color: #F2F1EE; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12h8"></path></svg>Simpler</button>
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid {{accentRing}}; background: {{accentSoft}}; color: #F2F1EE; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"></path><path d="M3 13l9 5 9-5"></path></svg>Deeper</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<button type="button" class="ghost" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #2A2A33; background: transparent; color: #D6D5DC; font-family: inherit; font-size: 15px; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13v6a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-6M12 3v12M7 8l5-5 5 5"></path></svg>Share</button>
+<button type="button" class="ghost" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #2A2A33; background: transparent; color: #D6D5DC; font-family: inherit; font-size: 15px; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"></path></svg>Captions (.srt)</button>
+</div>
+</div>
+
+<section aria-labelledby="fu-h" style="margin-top: 40px;">
+<h2 id="fu-h" style="margin: 0 0 12px; font-size: 18px; font-weight: 600;">Still curious?</h2>
+<div class="composer" style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #16161B; border: 1px solid #2A2A33; border-radius: 16px;">
+<label for="fu" class="sr-only">Ask a follow-up question</label>
+<input id="fu" class="q-input" type="text" placeholder="Wait, why does…?" style="flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 0 12px; background: transparent; border: 0; color: #F2F1EE; font-family: inherit; font-size: 17px;">
+<button type="button" style="flex: 0 0 auto; min-height: 44px; padding: 0 20px; border-radius: 10px; border: 0; background: {{accent}}; color: #0D0D10; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;">Ask</button>
+</div>
+</section>
+
+<section aria-labelledby="quiz-h" style="margin-top: 56px;">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px;">
+<h2 id="quiz-h" style="margin: 0; font-family: 'Instrument Sans', sans-serif; font-size: 28px; font-weight: 650; letter-spacing: -0.02em;">Did it land?</h2>
+<p style="margin: 0; font-size: 14px; color: #8A8995;">Watching isn’t learning. Two minutes of this is.</p>
+</div>
+
+<div style="margin-top: 20px; display: flex; flex-direction: column; gap: 16px;">
+
+<div style="background: #16161B; border: 1px solid #2A2A33; border-radius: 18px; padding: 24px;">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8A8995;"><span style="width: 24px; height: 24px; display: grid; place-items: center; border-radius: 999px; background: #24242C; color: #F2F1EE; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; letter-spacing: 0;">1</span>Myth or fact?</div>
+<div style="margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px;">
+<p style="margin: 0; flex: 1 1 360px; font-family: 'Instrument Sans', sans-serif; font-size: 21px; font-weight: 500; line-height: 1.4; letter-spacing: -0.01em;">“Backpropagation is the learning itself: it directly changes the weights.”</p>
+<div style="display: flex; gap: 8px;">
+<button type="button" aria-pressed="{{mythPressed}}" onClick="{{pickMyth}}" style="min-height: 48px; min-width: 108px; padding: 0 18px; border-radius: 12px; border: 1px solid {{mythBorder}}; background: {{mythBg}}; color: #F2F1EE; font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer;">Myth</button>
+<button type="button" aria-pressed="{{factPressed}}" onClick="{{pickFact}}" style="min-height: 48px; min-width: 108px; padding: 0 18px; border-radius: 12px; border: 1px solid {{factBorder}}; background: {{factBg}}; color: #F2F1EE; font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer;">Fact</button>
+</div>
+</div>
+<sc-if value="{{answered}}" hint-placeholder-val="{{false}}">
+<div style="margin-top: 18px; padding: 14px 16px; border-radius: 12px; background: #1E1E25; display: flex; align-items: flex-start; gap: 12px;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{verdictColor}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 2px;"><circle cx="12" cy="12" r="9"></circle><path d="M8 12.5l2.5 2.5L16 9.5"></path></svg>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #D6D5DC;"><strong style="color: {{verdictColor}};">{{verdict}}</strong> Backprop only works out which way each weight should change: the gradient. A separate update step does the actual changing.</p>
+</div>
+</sc-if>
+</div>
+
+<div style="background: #16161B; border: 1px solid #2A2A33; border-radius: 18px; padding: 24px;">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8A8995;"><span style="width: 24px; height: 24px; display: grid; place-items: center; border-radius: 999px; background: #24242C; color: #F2F1EE; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; letter-spacing: 0;">2</span>In your own words</div>
+<label for="expl" style="display: block; margin-top: 14px; font-size: 18px; font-weight: 500; line-height: 1.5;">How does a neural network learn from one wrong guess? Explain it as if to a friend.</label>
+<textarea id="expl" class="q-input" rows="4" placeholder="It works because…" value="{{expl}}" onChange="{{onExpl}}" style="display: block; margin-top: 14px; width: 100%; box-sizing: border-box; min-height: 128px; resize: vertical; padding: 14px 16px; background: #0D0D10; border: 1px solid #2A2A33; border-radius: 12px; color: #F2F1EE; font-family: inherit; font-size: 16px; line-height: 1.55;"></textarea>
+<div style="margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="font-size: 13px; color: #8A8995;">{{checkHint}}</span>
+<button type="button" disabled="{{checkDisabled}}" style="min-height: 48px; padding: 0 20px; border-radius: 12px; border: 1px solid {{checkBorder}}; background: {{checkBg}}; color: {{checkColor}}; font-family: inherit; font-size: 15px; font-weight: 600; cursor: {{checkCursor}};">Check my explanation</button>
+</div>
+</div>
+
+</div>
+</section>
+</div>
+
+<aside aria-label="Transcript and sources" style="flex: 1 1 340px; min-width: 0; background: #16161B; border: 1px solid #2A2A33; border-radius: 18px; overflow: hidden;">
+<div style="display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid #2A2A33;">
+<button type="button" aria-pressed="{{isT}}" onClick="{{showT}}" style="flex: 1 1 0; min-height: 44px; border: 0; border-radius: 10px; background: {{tBg}}; color: {{tColor}}; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;">Transcript</button>
+<button type="button" aria-pressed="{{isS}}" onClick="{{showS}}" style="flex: 1 1 0; min-height: 44px; border: 0; border-radius: 10px; background: {{sBg}}; color: {{sColor}}; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;">Sources<span style="margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: #2A2A33; color: #D6D5DC; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; font-weight: 500;">14</span></button>
+</div>
+
+<sc-if value="{{isT}}" hint-placeholder-val="{{true}}">
+<div style="max-height: 780px; overflow-y: auto; padding: 8px;">
+<sc-for list="{{paras}}" as="p" hint-placeholder-count="7">
+<button type="button" class="para" onClick="{{p.seek}}" aria-current="{{p.current}}" style="display: flex; gap: 14px; width: 100%; padding: 12px; border: 0; border-radius: 12px; background: {{p.bg}}; color: {{p.color}}; font-family: inherit; font-size: 14.5px; line-height: 1.6; text-align: left; cursor: pointer;">
+<span style="flex: 0 0 36px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; line-height: 23px; color: {{p.tColor}};">{{p.t}}</span>
+<span>{{p.text}}</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{isS}}" hint-placeholder-val="{{false}}">
+<ol style="list-style: none; margin: 0; padding: 8px; max-height: 780px; overflow-y: auto;">
+<sc-for list="{{sources}}" as="src" hint-placeholder-count="8">
+<li>
+<a href="{{src.href}}" class="src" style="display: flex; gap: 12px; padding: 12px; border-radius: 12px; color: #F2F1EE;">
+<span style="flex: 0 0 22px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; line-height: 21px; color: #8A8995;">{{src.n}}</span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+<span class="src-title" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14.5px; line-height: 1.45; color: {{src.titleColor}};">{{src.title}}</span>
+<span style="font-size: 13px; color: #8A8995;">{{src.domain}}</span>
+</span>
+</a>
+</li>
+</sc-for>
+</ol>
+</sc-if>
+</aside>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#A99BFF","options":["#A99BFF","#F2B544","#6FD3C1","#FF8FB1"]},"mark":{"editor":"enum","options":["corner","half"],"default":"corner"},"$preview":{"width":1440,"height":1720}}'>
+class Component extends DCLogic {
+  hexA(hex, a) {
+    const h = String(hex || '').replace('#', '');
+    const f = h.length === 3 ? h.split('').map(function (c) { return c + c; }).join('') : h.slice(0, 6);
+    const n = parseInt(f, 16);
+    if (isNaN(n)) return 'rgba(169,155,255,' + a + ')';
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+  tint(hex, t) {
+    const c = this.hexA(hex, 1).match(/\d+/g);
+    return 'rgb(' + Math.round(+c[0] + (255 - c[0]) * t) + ',' + Math.round(+c[1] + (255 - c[1]) * t) + ',' + Math.round(+c[2] + (255 - c[2]) * t) + ')';
+  }
+  shade(hex, t) {
+    const c = this.hexA(hex, 1).match(/\d+/g);
+    const k = 1 - t;
+    return 'rgb(' + Math.round(c[0] * k) + ',' + Math.round(c[1] * k) + ',' + Math.round(c[2] * k) + ')';
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#A99BFF';
+    const mark = this.props.mark ?? 'corner';
+    const st = this.state || {};
+    const tab = st.tab || 'transcript';
+    const active = st.active ?? 2;
+    const answer = st.answer || null;
+    const expl = st.expl ?? '';
+    const total = 210;
+
+    const texts = [
+      'You show a network a photo of a cat. It confidently says: dog. Wrong. Here’s the puzzle: nothing inside it knows which part made the mistake. So how does that one wrong guess make it better next time?',
+      'A neural network is a chain of layers. Data flows one way, from input to output. Values pass between layers through adjustable connections called weights. Pushing the photo through, layer by layer, is the forward pass. It ends in a guess. Then a loss turns how wrong that guess was into one number. Big means bad. Zero means perfect. Learning means adjusting the weights until the loss is small.',
+      'To shrink the loss, you need backpropagation, or backprop. It works out which way every weight should change. A common belief is that backprop changes the weights itself. It doesn’t. Backprop only computes the directions. A separate update step does the actual changing.',
+      'Those directions are called the gradient. Picture a foggy hill where height is the loss. The gradient points uphill, so you step the opposite way. Each weight gets its own number. Positive means raising that weight raises the loss, so shrink it. Negative means grow it. The size says how much that weight matters. The rule: new weight equals weight minus a small step times the gradient. Repeat, many times.',
+      'But how does backprop find each weight’s number? It assigns blame, working backward from the loss. Here’s the catch: an early weight never touches the answer directly. It changes a hidden value, which changes later values, which change the loss. Think of a tap and a bucket. If the tap doubles the flow, and the flow fills the bucket three times faster, the tap fills it six times faster. Rates multiply along a chain. That’s the chain rule. So error signals pass back layer by layer, each built from the one after it. Shared pieces are computed once and reused. That’s why it’s fast.',
+      'Now the whole loop. Forward pass: make a guess. Measure the loss. Backward pass: backprop hands out the blame. Nudge the weights. Then repeat. One full pass through all the training data is called an epoch. That’s how one wrong guess makes the next one better.',
+      'So, back to the cat called a dog. A network learns in three moves: measure how wrong the guess was, trace the blame backward through the layers, and nudge each connection to do a little better.'
+    ];
+    const lens = texts.map((t) => t.length);
+    const sum = lens.reduce((a, b) => a + b, 0);
+    const starts = [];
+    let acc = 0;
+    for (let i = 0; i < lens.length; i++) { starts.push(Math.round(acc / sum * total)); acc += lens[i]; }
+    const fmt = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    const pct = (s) => (Math.min(s, total) / total * 100).toFixed(2) + '%';
+    const nowSecs = starts[active] + 6;
+
+    const paras = texts.map((text, i) => ({
+      t: fmt(starts[i]),
+      text: text,
+      current: i === active,
+      bg: i === active ? this.hexA(accent, 0.12) : 'transparent',
+      color: i === active ? '#F2F1EE' : '#B4B3BD',
+      tColor: i === active ? accent : '#8A8995',
+      seek: () => this.setState({ active: i })
+    }));
+    const ticks = starts.slice(1).map((s) => ({ left: pct(s) }));
+
+    const sourceRows = [
+      ['Backpropagation – Foundations of Computer Vision', 'visionbook.mit.edu'],
+      ['Neural Networks – 6.390 Intro to Machine Learning', 'introml.mit.edu'],
+      ['', 'lem.che.udel.edu'],
+      ['Backpropagation', 'cs231n.stanford.edu'],
+      ['Backpropagation Worked Example', 'bnaskrecki.faculty.wmi.amu.edu.pl'],
+      ['Lecture 2: How to Train a Neural Net', 'ocw.mit.edu'],
+      ['What is backpropagation really doing? | 3Blue1Brown', '3blue1brown.com'],
+      ['Backpropagation explained simply, with a network you can train', 'bugbotlab.com'],
+      ['Backpropagation, intuitively | Deep Learning Chapter 3', 'youtube.com'],
+      ['Backpropagation Explained Visually: how neural networks learn', 'mathtomachine.com'],
+      ['Backprop Explainer', 'xnought.github.io'],
+      ['Gradient descent, how neural networks learn | 3Blue1Brown', '3blue1brown.com'],
+      ['How a Neural Network Learns, Interactively', 'interactively.info'],
+      ['Loss Functions and Gradient Descent Explained | CX Learn', 'cadetx.co.uk']
+    ];
+    const sources = sourceRows.map((r, i) => ({
+      n: String(i + 1),
+      title: r[0] || 'Untitled page',
+      titleColor: r[0] ? '#F2F1EE' : '#8A8995',
+      domain: r[1],
+      href: 'https://' + r[1]
+    }));
+
+    const soft = this.hexA(accent, 0.14);
+    const ring = this.hexA(accent, 0.45);
+    const isT = tab === 'transcript';
+    const hasText = expl.trim().length > 0;
+    const correct = answer === 'myth';
+
+    return {
+      accent: accent,
+      accentDeep: this.shade(accent, 0.4),
+      accentLight: this.tint(accent, 0.6),
+      markCorner: mark !== 'half',
+      markHalf: mark === 'half',
+      accentSoft: soft,
+      accentRing: ring,
+      progress: pct(nowSecs),
+      timeLabel: fmt(nowSecs),
+      ticks: ticks,
+      paras: paras,
+      sources: sources,
+      isT: isT,
+      isS: !isT,
+      tBg: isT ? '#24242C' : 'transparent',
+      tColor: isT ? '#F2F1EE' : '#B4B3BD',
+      sBg: !isT ? '#24242C' : 'transparent',
+      sColor: !isT ? '#F2F1EE' : '#B4B3BD',
+      showT: () => this.setState({ tab: 'transcript' }),
+      showS: () => this.setState({ tab: 'sources' }),
+      mythPressed: answer === 'myth',
+      factPressed: answer === 'fact',
+      mythBorder: answer === 'myth' ? accent : '#2A2A33',
+      mythBg: answer === 'myth' ? soft : '#1E1E25',
+      factBorder: answer === 'fact' ? accent : '#2A2A33',
+      factBg: answer === 'fact' ? soft : '#1E1E25',
+      pickMyth: () => this.setState({ answer: 'myth' }),
+      pickFact: () => this.setState({ answer: 'fact' }),
+      answered: !!answer,
+      verdict: correct ? 'Right, it’s a myth.' : 'Not quite: it’s a myth.',
+      verdictColor: correct ? '#6FD3C1' : '#FFB37A',
+      expl: expl,
+      onExpl: (e) => this.setState({ expl: e.target.value }),
+      checkDisabled: !hasText,
+      checkHint: hasText ? 'Ready when you are.' : 'Write a sentence or two, then check it.',
+      checkBg: hasText ? accent : '#1E1E25',
+      checkColor: hasText ? '#0D0D10' : '#8A8995',
+      checkBorder: hasText ? accent : '#2A2A33',
+      checkCursor: hasText ? 'pointer' : 'not-allowed'
+    };
+  }
+}
+</script>
+</body>
+</html>

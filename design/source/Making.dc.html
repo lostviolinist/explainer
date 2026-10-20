@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unfold, being made</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0D0D10}
+a{color:#F2F1EE;text-decoration:none}a:hover{color:#FFFFFF}
+.ghost:hover{background:#1E1E25 !important;color:#FFFFFF !important}
+.row:hover{background:#18181E}
+@keyframes unfold-spin{to{transform:rotate(360deg)}}
+.spin{animation:unfold-spin 1s linear infinite;transform-origin:50% 50%}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}}
+.show-sm{display:none}
+@media (max-width: 720px){.hide-sm{display:none !important}.show-sm{display:block !important}.poster{justify-content:flex-start !important;padding:16px 18px !important}.poster-quote{font-size:17px !important}}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #0D0D10; color: #F2F1EE; font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; font-size: 16px; line-height: 1.5;">
+
+<header style="max-width: 1280px; margin: 0 auto; padding: 20px 24px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; min-height: 44px; color: #F2F1EE; font-family: 'Instrument Sans', sans-serif; font-weight: 650; font-size: 21px; letter-spacing: -0.01em;">
+<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><path d="M12.9 8 L27 16 L6 28 L6 12 Z" fill="{{accent}}" stroke="{{accent}}" stroke-width="2.5" stroke-linejoin="round"></path><path d="M6 12 L12.9 8 L13 15.9 Z" fill="{{accentLight}}" stroke="{{accentLight}}" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+Unfold
+</a>
+<nav aria-label="Main" style="display: flex; gap: 4px;">
+<a href="Main.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 10px; color: #B4B3BD; font-size: 15px;">Recent</a>
+</nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 0 24px 96px; box-sizing: border-box;">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: #B4B3BD; font-size: 15px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>Back to home</a>
+
+<h1 style="margin: 8px 0 0; font-family: 'Instrument Sans', sans-serif; font-size: clamp(30px, 3.4vw, 44px); font-weight: 700; letter-spacing: -0.02em; line-height: 1.08;">What is backpropagation?</h1>
+
+<section aria-label="Progress" style="margin-top: 24px; padding: 20px 22px; border-radius: 18px; background: #16161B; border: 1px solid #2A2A33;">
+<ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px;">
+<sc-for list="{{segments}}" as="g" hint-placeholder-count="5">
+<li style="display: flex; flex-direction: column; gap: 10px; min-width: 0;" aria-current="{{g.current}}">
+<div style="height: 6px; border-radius: 3px; background: #24242C; overflow: hidden;"><div style="width: {{g.fill}}; height: 100%; border-radius: 3px; background: {{g.accent}};"></div></div>
+<div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+<sc-if value="{{g.isDone}}" hint-placeholder-val="{{true}}"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="flex: 0 0 auto;"><circle cx="12" cy="12" r="11" fill="{{g.accent}}"></circle><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#0D0D10" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if>
+<sc-if value="{{g.isActive}}" hint-placeholder-val="{{false}}"><svg class="spin" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="flex: 0 0 auto;"><circle cx="12" cy="12" r="9" fill="none" stroke="#2A2A33" stroke-width="3"></circle><path d="M12 3a9 9 0 0 1 9 9" fill="none" stroke="{{g.accent}}" stroke-width="3" stroke-linecap="round"></path></svg></sc-if>
+<sc-if value="{{g.isPending}}" hint-placeholder-val="{{false}}"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="flex: 0 0 auto;"><circle cx="12" cy="12" r="9" fill="none" stroke="#3A3A45" stroke-width="2"></circle></svg></sc-if>
+<sc-if value="{{g.isError}}" hint-placeholder-val="{{false}}"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="flex: 0 0 auto;"><circle cx="12" cy="12" r="11" fill="#FF9B8A"></circle><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="#0D0D10" stroke-width="2.6" stroke-linecap="round"></path></svg></sc-if>
+<span class="hide-sm" style="font-size: 14px; font-weight: 600; color: {{g.nameColor}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{g.name}}</span>
+</div>
+<span class="hide-sm" style="margin-top: -6px; padding-left: 24px; font-size: 13px; line-height: 1.4; color: {{g.subColor}};">{{g.sub}}</span>
+</li>
+</sc-for>
+</ol>
+<p class="show-sm" style="margin: 12px 0 0; font-size: 14px; font-weight: 600; color: #F2F1EE;">{{stepLine}}</p>
+<sc-if value="{{notStopped}}" hint-placeholder-val="{{true}}">
+<div aria-live="polite" style="margin-top: 18px; padding-top: 16px; border-top: 1px solid #22222A; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px;">
+<span style="font-size: 16px; font-weight: 500; color: {{activityColor}};">{{activity}}</span>
+<span style="display: flex; gap: 16px; font-size: 14px; color: #B4B3BD;"><span>{{eta}}</span><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px; color: #8A8995;">{{pct}}</span></span>
+</div>
+</sc-if>
+<sc-if value="{{isStopped}}" hint-placeholder-val="{{false}}">
+<div role="alert" style="margin-top: 18px; padding-top: 16px; border-top: 1px solid #22222A; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: flex-start; gap: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF9B8A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 1px;"><path d="M12 3.5L2.5 20h19z"></path><path d="M12 10v4.5M12 17.2h.01"></path></svg>
+<div style="min-width: 0;">
+<p style="margin: 0; font-size: 16px; font-weight: 600; color: #F2F1EE;">This one stopped at Illustrating</p>
+<p style="margin: 4px 0 0; max-width: 760px; font-size: 14px; line-height: 1.55; color: #D6D5DC;">The animator timed out on scenes 5, 7 and 10. Your research, script, voice and the other 8 scenes are saved, so trying again only redraws those three.</p>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; padding-left: 34px;">
+<button type="button" style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 0; background: {{accent}}; color: #0D0D10; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;">Try those 3 scenes again</button>
+<button type="button" class="ghost" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #3A3A45; background: transparent; color: #F2F1EE; font-family: inherit; font-size: 15px; cursor: pointer;">Start over</button>
+<button type="button" class="ghost" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #B4B3BD; font-family: inherit; font-size: 15px; cursor: pointer;">Report a problem</button>
+</div>
+</div>
+</sc-if>
+</section>
+
+<sc-if value="{{showWait}}" hint-placeholder-val="{{true}}">
+<div class="show-sm" style="margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: {{accentSoft}}; border: 1px solid {{accentRing}};">
+<p style="margin: 0; font-size: 14px; line-height: 1.5; color: #D6D5DC;"><strong style="color: #F2F1EE;">No need to wait here.</strong> It keeps going if you close this tab.</p>
+<button type="button" onClick="{{copyLink}}" style="margin-top: 10px; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #3A3A45; background: transparent; color: #F2F1EE; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">{{copyLabel}}</button>
+</div>
+</sc-if>
+
+<div style="margin-top: 24px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px;">
+
+<div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 24px;">
+
+<section aria-labelledby="cut-h" style="padding: 20px; border-radius: 18px; background: #16161B; border: 1px solid #2A2A33;">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-bottom: 14px;">
+<h2 id="cut-h" style="margin: 0; font-size: 16px; font-weight: 600;">Rough cut</h2>
+<span style="font-size: 13px; color: #8A8995;">{{cutNote}}</span>
+</div>
+<div style="position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #F4EFE4;">
+
+<sc-if value="{{posterTitle}}" hint-placeholder-val="{{true}}">
+<div class="poster" style="position: absolute; inset: 0; padding: 8% 9% 18%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 14px; color: #2B2B2B;">
+<p class="hide-sm" style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6B665C;">Your video opens with</p>
+<p class="poster-quote" style="margin: 0; max-width: 640px; font-family: 'Instrument Sans', sans-serif; font-size: clamp(22px, 2.6vw, 36px); font-weight: 600; line-height: 1.2; letter-spacing: -0.02em;">“Your network just guessed ‘cat’ for a picture of a dog.”</p>
+</div>
+</sc-if>
+
+<sc-if value="{{posterArt}}" hint-placeholder-val="{{false}}">
+<svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block;">
+<rect width="640" height="360" fill="#F4EFE4"></rect>
+<g stroke="#B9CBE6" stroke-width="3">
+<path d="M200 110 L280 110 M200 110 L280 170 M200 170 L280 110 M200 170 L280 170 M200 170 L280 230 M200 230 L280 170 M200 230 L280 230"></path>
+<path d="M280 110 L360 110 M280 110 L360 170 M280 170 L360 110 M280 170 L360 170 M280 170 L360 230 M280 230 L360 170 M280 230 L360 230"></path>
+</g>
+<g fill="#9DBBE3"><circle cx="200" cy="110" r="22"></circle><circle cx="200" cy="170" r="22"></circle><circle cx="200" cy="230" r="22"></circle><circle cx="280" cy="110" r="22"></circle><circle cx="280" cy="170" r="22"></circle><circle cx="280" cy="230" r="22"></circle><circle cx="360" cy="110" r="22"></circle><circle cx="360" cy="170" r="22"></circle><circle cx="360" cy="230" r="22"></circle></g>
+<g fill="#F2CC5B"><circle cx="240" cy="140" r="9"></circle><circle cx="320" cy="200" r="9"></circle><circle cx="240" cy="200" r="9"></circle><circle cx="320" cy="140" r="9"></circle></g>
+<rect x="150" y="262" width="260" height="16" rx="8" fill="#E3DACB"></rect>
+<rect x="420" y="140" width="96" height="84" rx="18" fill="#FFFFFF"></rect>
+<path d="M432 182 l-16 8 l16 6 z" fill="#FFFFFF"></path>
+<circle cx="468" cy="182" r="22" fill="#F2CC5B"></circle>
+<path d="M496 70 a44 44 0 0 1 0 0" fill="none"></path>
+<path d="M440 92 A46 46 0 0 1 532 92" fill="none" stroke="#E3DACB" stroke-width="10" stroke-linecap="round"></path>
+<path d="M500 54 A46 46 0 0 1 532 92" fill="none" stroke="#E07A5F" stroke-width="10" stroke-linecap="round"></path>
+<path d="M486 92 L516 70" stroke="#C9382E" stroke-width="5" stroke-linecap="round"></path>
+</svg>
+</sc-if>
+
+<sc-if value="{{showDone}}" hint-placeholder-val="{{false}}">
+<a href="Watch.dc.html" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 26px; border-radius: 999px; background: {{accent}}; color: #0D0D10; font-size: 17px; font-weight: 600; box-shadow: 0 8px 30px rgba(0,0,0,0.25);"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"></path></svg>Watch it</a>
+</sc-if>
+
+<sc-if value="{{showControls}}" hint-placeholder-val="{{true}}">
+<div style="position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 4px; border-radius: 14px; background: rgba(13,13,16,0.86); color: #FFFFFF;">
+<button type="button" aria-label="Play the rough cut" disabled="{{cutEmpty}}" style="width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 999px; background: transparent; color: #FFFFFF; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"></path></svg></button>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px;">{{cutTime}}</span>
+<span style="flex: 1 1 auto;"></span>
+<span class="hide-sm" style="font-size: 13px; color: #D6D5DC;">{{cutCaption}}</span>
+</div>
+</sc-if>
+</div>
+
+<div style="margin-top: 14px; display: flex; gap: 3px;" aria-hidden="true">
+<sc-for list="{{strip}}" as="sg" hint-placeholder-count="11"><span style="flex: 1 1 0; height: 8px; border-radius: 3px; background: {{sg.c}};"></span></sc-for>
+</div>
+<div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: #B4B3BD;">
+<span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #F4EFE4;"></span>In the cut</span>
+<span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: {{accent}};"></span>Being animated</span>
+<span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: {{editTint}};"></span>Built in the edit</span>
+<span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #2E2E38;"></span>Still drawing</span>
+<sc-if value="{{hasProblems}}" hint-placeholder-val="{{false}}"><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: {{problemColor}};"></span>{{problemLegend}}</span></sc-if>
+</div>
+</section>
+
+<section aria-labelledby="sb-h" style="padding: 20px 20px 8px; border-radius: 18px; background: #16161B; border: 1px solid #2A2A33;">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-bottom: 8px;">
+<h2 id="sb-h" style="margin: 0; font-size: 16px; font-weight: 600;">Storyboard</h2>
+<span style="font-size: 13px; color: #8A8995;">{{sbNote}}</span>
+</div>
+<sc-if value="{{hasScenes}}" hint-placeholder-val="{{true}}">
+<ol style="list-style: none; margin: 0 -8px; padding: 0;">
+<sc-for list="{{scenes}}" as="sc" hint-placeholder-count="11">
+<li class="row" style="display: flex; align-items: center; gap: 14px; padding: 10px 8px; border-top: 1px solid #22222A; border-radius: 10px;">
+<span style="flex: 0 0 20px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8A8995; text-align: right;">{{sc.n}}</span>
+<span class="hide-sm" style="flex: 0 0 72px; height: 40px; display: grid; place-items: center; border-radius: 7px; background: {{sc.thumbBg}}; box-shadow: inset 0 0 0 1px {{sc.thumbRing}};">
+<sc-if value="{{sc.thumbReady}}" hint-placeholder-val="{{false}}"><svg width="52" height="26" viewBox="0 0 52 26" aria-hidden="true"><circle cx="5" cy="5" r="3" fill="#E9B730"></circle><rect x="11" y="3.5" width="22" height="3" rx="1.5" fill="#B4AC9C"></rect><circle cx="5" cy="13" r="3" fill="#9DBBE3"></circle><rect x="11" y="11.5" width="16" height="3" rx="1.5" fill="#B4AC9C"></rect><circle cx="5" cy="21" r="3" fill="#E07A5F"></circle><rect x="11" y="19.5" width="26" height="3" rx="1.5" fill="#B4AC9C"></rect></svg></sc-if>
+<sc-if value="{{sc.thumbBusy}}" hint-placeholder-val="{{true}}"><svg class="spin" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="#3A3A45" stroke-width="3"></circle><path d="M12 3a9 9 0 0 1 9 9" fill="none" stroke="{{sc.busyColor}}" stroke-width="3" stroke-linecap="round"></path></svg></sc-if>
+<sc-if value="{{sc.thumbFail}}" hint-placeholder-val="{{false}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF9B8A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5L2.5 20h19z"></path><path d="M12 10v4.5M12 17.2h.01"></path></svg></sc-if>
+<sc-if value="{{sc.thumbEdit}}" hint-placeholder-val="{{false}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{sc.editColor}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17c3-6 6-6 8-2s5 4 8-2"></path><path d="M4 9h3M17 6h3"></path></svg></sc-if>
+</span>
+<span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px;">
+<span style="align-self: flex-start; padding: 1px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; background: {{sc.tagBg}}; color: {{sc.tagColor}};">{{sc.type}}</span>
+<span style="font-size: 14.5px; color: #D6D5DC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{sc.line}}</span>
+<span class="show-sm" style="font-size: 12.5px; color: {{sc.statusColor}};">{{sc.statusShort}}</span>
+</span>
+<span class="hide-sm" style="flex: 0 0 auto; display: flex; align-items: center; gap: 12px; font-size: 12.5px;">
+<sc-for list="{{sc.marks}}" as="mk" hint-placeholder-count="3">
+<span style="display: inline-flex; align-items: center; gap: 5px; color: {{mk.color}}; min-width: {{mk.minW}};">
+<sc-if value="{{mk.done}}" hint-placeholder-val="{{true}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{mk.accent}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></sc-if>
+<sc-if value="{{mk.busy}}" hint-placeholder-val="{{false}}"><svg class="spin" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="#3A3A45" stroke-width="3.5"></circle><path d="M12 3a9 9 0 0 1 9 9" fill="none" stroke="{{mk.accent}}" stroke-width="3.5" stroke-linecap="round"></path></svg></sc-if>
+<sc-if value="{{mk.wait}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="#3A3A45" stroke-width="2.5"></circle></svg></sc-if>
+<sc-if value="{{mk.fail}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF9B8A" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"></path></svg></sc-if>
+{{mk.label}}
+</span>
+</sc-for>
+</span>
+<button type="button" class="ghost" aria-label="{{sc.voiceLabel}}" disabled="{{sc.noVoice}}" style="flex: 0 0 44px; width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid #2A2A33; border-radius: 10px; background: transparent; color: {{sc.voiceColor}}; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"></path></svg></button>
+</li>
+</sc-for>
+</ol>
+</sc-if>
+<sc-if value="{{noScenes}}" hint-placeholder-val="{{false}}"><p style="margin: 8px 0 12px; font-size: 14px; color: #8A8995;">The storyboard shows up here once the script is written.</p></sc-if>
+</section>
+</div>
+
+<aside style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+
+<sc-if value="{{showWait}}" hint-placeholder-val="{{true}}">
+<section aria-labelledby="wait-h" class="hide-sm" style="padding: 18px 20px; border-radius: 18px; background: {{accentSoft}}; border: 1px solid {{accentRing}};">
+<h2 id="wait-h" style="margin: 0; font-size: 16px; font-weight: 600;">No need to wait here</h2>
+<p style="margin: 6px 0 0; font-size: 14px; line-height: 1.55; color: #D6D5DC;">It keeps going if you close this tab. Come back to this link any time. The tab title shows how far along it is.</p>
+<div style="margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px;">
+<button type="button" onClick="{{toggleNotify}}" aria-pressed="{{notify}}" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid {{notifyBorder}}; background: {{notifyBg}}; color: {{notifyColor}}; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg>{{notifyLabel}}</button>
+<button type="button" onClick="{{copyLink}}" class="ghost" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #3A3A45; background: transparent; color: #F2F1EE; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg>{{copyLabel}}</button>
+</div>
+<sc-if value="{{notify}}" hint-placeholder-val="{{false}}"><p style="margin: 10px 0 0; font-size: 13px; color: #B4B3BD;">You’ll get a browser notification, as long as one Unfold tab stays open.</p></sc-if>
+</section>
+</sc-if>
+
+<section aria-labelledby="goal-h" style="padding: 18px 20px; border-radius: 18px; background: #16161B; border: 1px solid #2A2A33;">
+<h2 id="goal-h" style="margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8A8995;">By the end you’ll be able to</h2>
+<p style="margin: 10px 0 0; font-size: 16px; line-height: 1.55; color: #F2F1EE;">Explain how a neural network learns from its mistakes: it measures its error, then works backward through its layers to figure out how much each connection contributed, and nudges every weight to reduce that error.</p>
+<div style="margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="padding: 3px 10px; border-radius: 999px; border: 1px solid #2A2A33; background: #1E1E25; font-size: 13px; color: #D6D5DC;">Some background</span>
+<span style="padding: 3px 10px; border-radius: 999px; border: 1px solid #2A2A33; background: #1E1E25; font-size: 13px; color: #D6D5DC;">Neutral tone</span>
+<span style="padding: 3px 10px; border-radius: 999px; border: 1px solid #2A2A33; background: #1E1E25; font-size: 13px; color: #D6D5DC;">About 3 min</span>
+</div>
+</section>
+
+<section aria-labelledby="ww-h" style="padding: 18px 20px; border-radius: 18px; background: #16161B; border: 1px solid #2A2A33;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<h2 id="ww-h" style="margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8A8995;">While you wait</h2>
+<div style="display: flex; align-items: center; gap: 2px;">
+<button type="button" aria-label="Previous fact" onClick="{{prevFact}}" class="ghost" style="width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: #B4B3BD; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></button>
+<span style="min-width: 40px; text-align: center; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8A8995;">{{factPos}}</span>
+<button type="button" aria-label="Next fact" onClick="{{nextFact}}" class="ghost" style="width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: #B4B3BD; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+</div>
+</div>
+<p style="margin: 8px 0 0; font-size: 15.5px; line-height: 1.55; color: #F2F1EE;">{{factText}}</p>
+<p style="margin: 8px 0 0; font-size: 13px; color: #8A8995;">{{factSource}}</p>
+
+<div style="margin-top: 18px; padding-top: 16px; border-top: 1px solid #22222A;">
+<p style="margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8A8995;">Myth or fact?</p>
+<p style="margin: 8px 0 0; font-family: 'Instrument Sans', sans-serif; font-size: 18px; font-weight: 500; line-height: 1.4;">“Backpropagation and gradient descent are the same thing.”</p>
+<div style="margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+<button type="button" aria-pressed="{{mythPressed}}" onClick="{{pickMyth}}" style="min-height: 44px; border-radius: 10px; border: 1px solid {{mythBorder}}; background: {{mythBg}}; color: #F2F1EE; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;">Myth</button>
+<button type="button" aria-pressed="{{factPressed}}" onClick="{{pickFact}}" style="min-height: 44px; border-radius: 10px; border: 1px solid {{factBorder}}; background: {{factBg}}; color: #F2F1EE; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;">Fact</button>
+</div>
+<sc-if value="{{answered}}" hint-placeholder-val="{{false}}">
+<p style="margin: 12px 0 0; font-size: 14px; line-height: 1.55; color: #D6D5DC;"><strong style="color: {{verdictColor}};">{{verdict}}</strong> Backpropagation works out how much each weight contributed to the error. Gradient descent then uses those numbers to update the weights.</p>
+</sc-if>
+</div>
+</section>
+
+<section aria-labelledby="src-h" style="padding: 18px 12px 10px; border-radius: 18px; background: #16161B; border: 1px solid #2A2A33;">
+<div style="display: flex; align-items: center; gap: 8px; padding: 0 8px;">
+<h2 id="src-h" style="margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8A8995;">Sources</h2>
+<span style="padding: 0 7px; border-radius: 999px; background: #24242C; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #D6D5DC;">{{srcCount}}</span>
+</div>
+<ul style="list-style: none; margin: 8px 0 0; padding: 0;">
+<sc-for list="{{sources}}" as="s" hint-placeholder-count="6">
+<li><a href="{{s.href}}" class="ghost" style="display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 10px; color: #F2F1EE;">
+<span style="flex: 0 0 28px; height: 28px; display: grid; place-items: center; border-radius: 7px; background: {{s.bg}}; color: #0D0D10; font-size: 12px; font-weight: 700;">{{s.letter}}</span>
+<span style="display: flex; flex-direction: column; min-width: 0;">
+<span style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{s.title}}</span>
+<span style="font-size: 12.5px; color: #8A8995;">{{s.domain}}</span>
+</span>
+</a></li>
+</sc-for>
+</ul>
+<button type="button" class="ghost" style="margin: 4px 8px 0; min-height: 40px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #B4B3BD; font-family: inherit; font-size: 14px; cursor: pointer;">Show all {{srcCount}}</button>
+</section>
+
+</aside>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"stage":{"editor":"enum","options":["understanding","researching","writing","illustrating","editing","done","retrying","stopped"],"default":"illustrating"},"accent":{"editor":"color","default":"#A99BFF","options":["#A99BFF","#F2B544","#6FD3C1","#FF8FB1"]},"$preview":{"width":1440,"height":1960}}'>
+class Component extends DCLogic {
+  hexA(hex, a) {
+    const h = String(hex || '').replace('#', '');
+    const f = h.length === 3 ? h.split('').map(function (c) { return c + c; }).join('') : h.slice(0, 6);
+    const n = parseInt(f, 16);
+    if (isNaN(n)) return 'rgba(169,155,255,' + a + ')';
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+  tint(hex, t) {
+    const c = this.hexA(hex, 1).match(/\d+/g);
+    return 'rgb(' + Math.round(+c[0] + (255 - c[0]) * t) + ',' + Math.round(+c[1] + (255 - c[1]) * t) + ',' + Math.round(+c[2] + (255 - c[2]) * t) + ')';
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#A99BFF';
+    const order = ['understanding', 'researching', 'writing', 'illustrating', 'editing', 'done'];
+    const raw = this.props.stage;
+    const stage = (order.indexOf(raw) >= 0 || raw === 'retrying' || raw === 'stopped') ? raw : 'illustrating';
+    const base = (stage === 'retrying' || stage === 'stopped') ? 'illustrating' : stage;
+    const si = order.indexOf(base);
+    const isStopped = stage === 'stopped';
+    const failColor = '#FF9B8A';
+    const retryColor = '#F2B544';
+    const st = this.state || {};
+    const soft = this.hexA(accent, 0.12);
+    const ring = this.hexA(accent, 0.4);
+    const editTint = '#4A3F75';
+
+    const segDefs = [
+      { name: 'Understanding', done: 'Some background, about 3 min', active: 'Reading your question', pending: 'What you want to know' },
+      { name: 'Researching', done: '13 sources', active: '9 sources so far', pending: 'Find and read sources' },
+      { name: 'Writing', done: '11 scenes, tested on a learner', active: 'Testing it on a learner', pending: 'Script, then a learner test' },
+      { name: 'Illustrating', done: 'All 11 scenes drawn', active: '1 of 11 scenes ready', pending: 'Voice and pictures' },
+      { name: 'Editing', done: 'Music and final cut', active: 'Music and motion graphics', pending: 'Music and final cut' }
+    ];
+    const activeFill = { understanding: '50%', researching: '70%', writing: '80%', illustrating: '20%', editing: '55%' };
+    const segments = segDefs.map((d, i) => {
+      let status = i < si ? 'done' : (i === si ? 'active' : 'pending');
+      if (isStopped && i === si) status = 'error';
+      let sub = status === 'done' ? d.done : (status === 'active' ? d.active : d.pending);
+      if (status === 'error') sub = 'Stopped: 3 scenes didn’t draw';
+      if (stage === 'retrying' && status === 'active') sub = '1 of 11 ready · 1 retrying';
+      return {
+        name: d.name,
+        sub: sub,
+        isDone: status === 'done', isActive: status === 'active', isPending: status === 'pending', isError: status === 'error',
+        current: status === 'active' || status === 'error',
+        fill: status === 'done' ? '100%' : (status === 'active' ? activeFill[base] : (status === 'error' ? '55%' : '0%')),
+        accent: status === 'error' ? failColor : accent,
+        nameColor: status === 'pending' ? '#8A8995' : '#F2F1EE',
+        subColor: status === 'error' ? failColor : (status === 'active' ? '#D6D5DC' : '#8A8995')
+      };
+    });
+
+    const meta = {
+      understanding: ['Working out what you want to know…', 'About 15–20 min left', '4%'],
+      researching: ['Reading sources…', 'About 14–18 min left', '15%'],
+      writing: ['Rewriting the parts a learner couldn’t follow…', 'About 13–18 min left', '40%'],
+      illustrating: ['Animating scene 3…', 'About 7–9 min left', '60%'],
+      editing: ['Adding music and the motion-graphics scenes…', 'About 2 min left', '90%'],
+      done: ['Ready to watch', 'Took 16 min', '100%'],
+      retrying: ['Scene 7 didn’t draw cleanly. Trying again with a simpler picture…', 'About 9–12 min left', '58%'],
+      stopped: ['Stopped at Illustrating', '', '55%']
+    };
+    const m = meta[stage];
+
+    const tags = {
+      'HOOK': '#FF8FB1', 'GROUNDING': '#B4B3BD', 'MYTH-BUSTER': '#F2B544', 'BUILD-UP': '#8EC5FF',
+      'CORE IDEA': '#A99BFF', 'PAYOFF': '#FFB37A', 'RECAP': '#6FD3C1'
+    };
+    const sceneDefs = [
+      ['HOOK', 'Your network just guessed ‘cat’ for a picture of a dog. Somewhere inside are thousands of connections.', 'draw'],
+      ['GROUNDING', 'A network is made of neurons stacked in layers. Each neuron takes a weighted sum of its inputs.', 'draw'],
+      ['GROUNDING', 'A loss function measures the gap between the prediction and the correct target.', 'anim'],
+      ['MYTH-BUSTER', 'You may hear that backpropagation is gradient descent. It isn’t.', 'edit'],
+      ['BUILD-UP', 'It starts with a forward pass. The input travels through the network layer by layer.', 'draw'],
+      ['BUILD-UP', 'Now the chain rule. Turning a tap doubles the flow.', 'draw'],
+      ['BUILD-UP', 'An early weight never touches the output directly; its effect runs through later values.', 'draw'],
+      ['CORE IDEA', 'Then comes the backward pass. Error signals travel from the output back toward the input.', 'draw'],
+      ['CORE IDEA', 'The result is the gradient: one number per weight. Size shows sensitivity.', 'edit'],
+      ['PAYOFF', 'Now picture a blindfolded hiker feeling the slope underfoot.', 'draw'],
+      ['RECAP', 'Forward pass, loss, backward pass, update, repeat.', 'ready']
+    ];
+    const mark = (label, state, minW) => ({
+      label: label, done: state === 'done', busy: state === 'busy' || state === 'retry', wait: state === 'wait', fail: state === 'fail',
+      accent: state === 'retry' ? retryColor : accent, minW: minW || '0px',
+      color: state === 'fail' ? failColor : (state === 'retry' ? retryColor : (state === 'wait' ? '#8A8995' : (state === 'busy' ? '#F2F1EE' : '#B4B3BD')))
+    });
+    const failed = [4, 6, 9];
+    const scenes = si < 2 ? [] : sceneDefs.map((s, i) => {
+      let pic = 'wait';
+      let picLabel = 'Picture';
+      let voice = 'done';
+      if (base === 'writing') { voice = 'busy'; }
+      else if (base === 'illustrating') {
+        if (s[2] === 'ready') { pic = 'done'; picLabel = 'Picture'; }
+        else if (s[2] === 'anim') { pic = 'busy'; picLabel = 'Animating'; }
+        else if (s[2] === 'edit') { pic = 'wait'; picLabel = 'In the edit'; }
+        else { pic = 'busy'; picLabel = 'Drawing'; }
+        if (stage === 'retrying' && i === 6) { pic = 'retry'; picLabel = 'Retrying, 2 of 3'; }
+        if (isStopped) {
+          if (failed.indexOf(i) >= 0) { pic = 'fail'; picLabel = 'Didn’t draw'; }
+          else if (s[2] !== 'edit') { pic = 'done'; picLabel = 'Picture'; }
+        }
+      } else if (base === 'editing') {
+        if (s[2] === 'edit') { pic = 'busy'; picLabel = 'In the edit'; } else { pic = 'done'; }
+      } else if (base === 'done') { pic = 'done'; }
+      const ready = pic === 'done';
+      const busy = pic === 'busy' || pic === 'retry';
+      const isFail = pic === 'fail';
+      const isEdit = s[2] === 'edit' && !ready;
+      const color = tags[s[0]];
+      let stripColor = '#2E2E38';
+      if (ready) stripColor = '#F4EFE4';
+      else if (isFail) stripColor = failColor;
+      else if (pic === 'retry') stripColor = retryColor;
+      else if (base === 'editing' && isEdit) stripColor = accent;
+      else if (isEdit) stripColor = editTint;
+      else if (s[2] === 'anim' && base === 'illustrating') stripColor = accent;
+      if (base === 'writing') stripColor = '#24242C';
+      const statusShort = base === 'writing' ? 'Recording voice' : (ready ? 'Ready' : picLabel);
+      return {
+        n: String(i + 1),
+        type: s[0],
+        line: s[1],
+        tagBg: this.hexA(color, 0.14),
+        tagColor: color,
+        thumbReady: ready,
+        thumbBusy: busy && !isEdit,
+        thumbEdit: isEdit && !busy,
+        thumbFail: isFail,
+        busyColor: pic === 'retry' ? retryColor : accent,
+        editColor: '#C9BEFF',
+        thumbBg: ready ? '#F4EFE4' : (isFail ? '#2A1C1C' : (isEdit ? '#2A2440' : '#1E1E25')),
+        thumbRing: ready ? '#F4EFE4' : (isFail ? '#5A2E2A' : '#2A2A33'),
+        marks: [mark('Script', 'done'), mark('Voice', voice), mark(picLabel, pic, '120px')],
+        statusShort: statusShort,
+        statusColor: isFail ? failColor : (pic === 'retry' ? retryColor : '#8A8995'),
+        stripColor: stripColor,
+        voiceLabel: 'Play the narration for scene ' + (i + 1),
+        noVoice: voice !== 'done',
+        voiceColor: voice === 'done' ? '#F2F1EE' : '#5A5A66'
+      };
+    });
+    const readyCount = scenes.filter((x) => x.thumbReady).length;
+
+    const strip = scenes.length ? scenes.map((x) => ({ c: x.stripColor })) : sceneDefs.map(() => ({ c: '#24242C' }));
+
+    const cutNotes = {
+      understanding: 'Nothing in the cut yet', researching: 'Nothing in the cut yet', writing: 'Nothing in the cut yet',
+      illustrating: '1 of 11 scenes · no music yet', editing: '11 of 11 scenes · adding music', done: 'Final cut, with music',
+      retrying: '1 of 11 scenes · no music yet', stopped: '6 of 11 scenes · no music'
+    };
+    const cutCaptions = {
+      understanding: 'Scenes join the cut as they finish', researching: 'Scenes join the cut as they finish', writing: 'Scenes join the cut as they finish',
+      illustrating: 'The rest joins the cut as it finishes', editing: 'Two scenes are still being built', done: '',
+      retrying: 'The rest joins the cut as it finishes', stopped: 'Paused until you try again'
+    };
+    const sbNotes = {
+      understanding: '', researching: '', writing: 'Script ready · recording the voice',
+      illustrating: readyCount + ' of 11 scenes ready', editing: '9 of 11 ready · 2 built in the edit', done: '11 of 11 scenes ready',
+      retrying: readyCount + ' of 11 scenes ready · 1 retrying', stopped: '6 ready · 2 for the edit · 3 didn’t draw'
+    };
+
+    const facts = [
+      ['1/12', 'Backpropagation, short for “backward propagation of error”, is an algorithm that efficiently computes the gradient of the loss with respect to every weight and bias in a network. In other words, it works out how much each weight contributed to the error.', 'visionbook.mit.edu'],
+      ['2/12', 'Backpropagation is the most common and central algorithm used to train neural networks.', 'developers.google.com'],
+      ['4/12', 'A loss (cost) function measures the difference between the network’s prediction and the correct target for one example. The training objective averages this loss over the data, and learning means finding the weights and biases that minimize it.', 'introml.mit.edu'],
+      ['7/12', 'Backpropagation rests on the chain rule. The derivative through a chain of functions is the product of the local derivatives along the path; in other words, rates multiply along a chain.', 'introml.mit.edu']
+    ];
+    const fi = ((st.fact || 0) % facts.length + facts.length) % facts.length;
+
+    const srcRows = [
+      ['What is backpropagation really doing? | 3Blue1Brown', '3blue1brown.com', '3', '#B5E36B'],
+      ['A Visual Explanation of Backpropagation in Neural Networks', 'sebastianraschka.com', 'S', '#E07A5F'],
+      ['Backpropagation Explained Visually: how neural networks learn', 'mathtomachine.com', 'M', '#A8D46F'],
+      ['Backpropagation explained simply, with a network you can train', 'bugbotlab.com', 'B', '#B98CF2'],
+      ['What is Backpropagation? | IBM', 'ibm.com', 'I', '#E58AD6'],
+      ['Neural Networks: Training using backpropagation | Google for Developers', 'developers.google.com', 'D', '#8E9BF2']
+    ];
+    const sources = srcRows.map((r) => ({ title: r[0], domain: r[1], letter: r[2], bg: r[3], href: 'https://' + r[1] }));
+
+    const answer = st.answer || null;
+    const notify = !!st.notify;
+
+    return {
+      accent: accent,
+      accentLight: this.tint(accent, 0.6),
+      accentSoft: soft,
+      accentRing: ring,
+      editTint: editTint,
+      segments: segments,
+      activity: m[0],
+      eta: m[1],
+      pct: m[2],
+      posterTitle: stage !== 'done',
+      posterArt: stage === 'done',
+      showDone: stage === 'done',
+      showControls: stage !== 'done',
+      cutEmpty: si < 3,
+      cutTime: isStopped ? '0:00 / 1:24' : (base === 'illustrating' ? '0:00 / 0:27' : (si < 3 ? '0:00' : '0:00 / 3:30')),
+      isStopped: isStopped,
+      notStopped: !isStopped,
+      showWait: !isStopped && stage !== 'done',
+      activityColor: stage === 'retrying' ? retryColor : '#F2F1EE',
+      hasProblems: isStopped || stage === 'retrying',
+      problemColor: isStopped ? failColor : retryColor,
+      problemLegend: isStopped ? 'Didn’t draw' : 'Retrying',
+      stepLine: si >= 5 ? 'All 5 steps done' : ('Step ' + (si + 1) + ' of 5 · ' + segDefs[si].name + (isStopped ? ' (stopped)' : '')),
+      cutNote: cutNotes[stage],
+      cutCaption: cutCaptions[stage],
+      strip: strip,
+      hasScenes: si >= 2,
+      noScenes: si < 2,
+      scenes: scenes,
+      sbNote: sbNotes[stage],
+      notify: notify,
+      notifyLabel: notify ? 'We’ll notify you' : 'Notify me when it’s ready',
+      notifyBg: notify ? accent : 'transparent',
+      notifyColor: notify ? '#0D0D10' : '#F2F1EE',
+      notifyBorder: notify ? accent : '#3A3A45',
+      toggleNotify: () => this.setState({ notify: !notify }),
+      copyLabel: st.copied ? 'Link copied' : 'Copy link',
+      copyLink: () => this.setState({ copied: true }),
+      factPos: facts[fi][0],
+      factText: facts[fi][1],
+      factSource: '— ' + facts[fi][2],
+      prevFact: () => this.setState({ fact: fi - 1 }),
+      nextFact: () => this.setState({ fact: fi + 1 }),
+      mythPressed: answer === 'myth',
+      factPressed: answer === 'fact',
+      mythBorder: answer === 'myth' ? accent : '#2A2A33',
+      mythBg: answer === 'myth' ? soft : '#1E1E25',
+      factBorder: answer === 'fact' ? accent : '#2A2A33',
+      factBg: answer === 'fact' ? soft : '#1E1E25',
+      pickMyth: () => this.setState({ answer: 'myth' }),
+      pickFact: () => this.setState({ answer: 'fact' }),
+      answered: !!answer,
+      verdict: answer === 'myth' ? 'Right, it’s a myth.' : 'Not quite: it’s a myth.',
+      verdictColor: answer === 'myth' ? '#6FD3C1' : '#FFB37A',
+      sources: sources,
+      srcCount: '13'
+    };
+  }
+}
+</script>
+</body>
+</html>
