@@ -68,6 +68,9 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
       // double submit) would write a second script and second recordings over the first, scene by scene.
       idempotency: "event.data.projectId",
       concurrency: [{ limit: 20 }, { key: "event.data.projectId", limit: 1 }],
+      // "Try again" on a run that went quiet sends project/resume. Should this run in fact still be alive
+      // (one very slow step), it is cancelled rather than left racing the resume over the same scenes.
+      cancelOn: [{ event: "project/resume", if: "async.data.projectId == event.data.projectId" }],
       onFailure: async ({ event, error, step }) => {
         const { projectId } = event.data.event.data;
         await step.sendEvent("notify-failure", { name: "project/stage.failed", data: { projectId, stage: "unknown", error: error.message } });
@@ -125,6 +128,8 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
       id: "resume-video",
       retries: 2,
       concurrency: [{ limit: 20 }, { key: "event.data.projectId", limit: 1 }],
+      // A later "Try again" supersedes this one. The timestamp check keeps a run's own trigger from cancelling it.
+      cancelOn: [{ event: "project/resume", if: "async.data.projectId == event.data.projectId && async.ts > event.ts" }],
       onFailure: async ({ event, error, step }) => {
         const { projectId } = event.data.event.data;
         await step.sendEvent("notify-failure", { name: "project/stage.failed", data: { projectId, stage: "unknown", error: error.message } });

@@ -73,19 +73,27 @@ export async function react(formData: FormData) {
   redirect(`/p/${child!.id}`);
 }
 
+/** A run that has said nothing for this long died with its worker (a restart, a laptop asleep) or hung. The page offers "Try again" after 15 minutes. */
+const QUIET_AFTER_MS = 10 * 60_000;
+
 /**
- * Pick a stopped video up where it left off. Everything it saved stays (research, script,
- * voice, the scenes that were made); the worker makes only what is missing, then the cut.
+ * Pick a stopped video up where it left off: one that failed, or one that went quiet. Everything it
+ * saved stays (research, script, voice, the scenes that were made); the worker makes only what is
+ * missing, then the cut.
  */
 export async function retryProject(projectId: string): Promise<void> {
   const id = z.string().uuid().parse(projectId);
   const [project] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
   if (!project) throw new Error("project not found");
-  if (project.stage !== "failed") return; // already running, or finished
+  if (project.stage === "done") return;
 
-  // Where it stopped: the stage of the last event before the failure.
-  const recent = await db.select({ stage: progressEvents.stage }).from(progressEvents).where(eq(progressEvents.projectId, id)).orderBy(desc(progressEvents.at)).limit(20);
+  // Where it stopped: the stage of the last event before the failure (or the silence).
+  const recent = await db.select({ stage: progressEvents.stage, at: progressEvents.at }).from(progressEvents).where(eq(progressEvents.projectId, id)).orderBy(desc(progressEvents.at)).limit(20);
   const stoppedAt = recent.map((e) => e.stage).find((st) => st !== "failed" && st !== "queued") ?? "intake";
+  // Should the old run still be alive, the resume event cancels it (see the worker's cancelOn).
+  const lastAt = recent[0]?.at ?? project.createdAt;
+  const quiet = Date.now() - lastAt.getTime() > QUIET_AFTER_MS;
+  if (project.stage !== "failed" && !quiet) return; // still running
 
   const lineage = project.userId
     ? await db.select({ reaction: projects.reaction }).from(projects).where(and(eq(projects.userId, project.userId), inArray(projects.reaction, ["simpler", "deeper"])))

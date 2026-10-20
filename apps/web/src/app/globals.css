@@ -268,6 +268,7 @@ button:disabled { cursor: not-allowed; }
 .mk-stopped { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--divider); display: flex; flex-direction: column; gap: 14px; }
 .mk-stopped-body { display: flex; align-items: flex-start; gap: 12px; }
 .mk-stopped-body .mk-warn-icon { flex: 0 0 auto; margin-top: 1px; color: var(--error); }
+.mk-stopped.quiet .mk-warn-icon { color: var(--warn); }
 .mk-stopped-title { margin: 0; font-size: 16px; font-weight: 600; }
 .mk-stopped-text { margin: 4px 0 0; max-width: 760px; font-size: 14px; line-height: 1.55; color: var(--text-2); }
 .mk-stopped-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-left: 34px; }

@@ -604,3 +604,18 @@ test("render progress reaches the page as frame counts, at most every 20 s or 5%
   assert.ok(events.every(([, f]) => f >= 0.5 && f <= 0.98), "fractions stay inside the editing span");
   assert.equal(events.at(-1)![1], 0.98);
 });
+
+test("Try again supersedes the run it replaces: project/resume cancels the original run and any earlier resume of that project", async () => {
+  const { makeFunctions } = await import("../src/inngest.ts");
+  const unused = () => {
+    throw new Error("not run in this test");
+  };
+  const fns = makeFunctions(unused, unused);
+  const [make, resume] = [fns[0]!, fns[1]!];
+  type InngestFn = { opts: { cancelOn?: { event: string; if?: string }[] } };
+  const cancels = (fn: InngestFn) => fn.opts.cancelOn ?? [];
+  assert.deepEqual(cancels(make).map((c) => c.event), ["project/resume"]);
+  assert.match(cancels(make)[0]!.if!, /async\.data\.projectId == event\.data\.projectId/);
+  assert.deepEqual(cancels(resume).map((c) => c.event), ["project/resume"]);
+  assert.match(cancels(resume)[0]!.if!, /async\.data\.projectId == event\.data\.projectId && async\.ts > event\.ts/);
+});

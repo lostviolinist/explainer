@@ -42,6 +42,15 @@ const SPAN: Record<string, [number, number]> = {
 };
 const TYPICAL_MIN = 10;
 
+// No progress event for this long, and no end, means the run died under the page: the app was restarted
+// (docker compose up), the laptop slept, or a step hung. The longest honest silences are a few minutes (one
+// slow model call, one Manim render); the final render reports every 20 s. The server allows a retry after
+// 10 minutes, so 15 here leaves room for clocks that disagree.
+const QUIET_AFTER_MS = 15 * 60_000;
+
+/** How a run came to a halt: on its own ("failed"), or by saying nothing for too long ("quiet"). */
+type Stopped = "failed" | "quiet" | null;
+
 const BEAT: Record<string, { label: string; tag: string }> = {
   hook: { label: "Hook", tag: "hook" },
   ground: { label: "Grounding", tag: "grounding" },
@@ -122,6 +131,10 @@ export function Progress({ projectId, question, title, style, initial, initialLi
   const last = events.at(-1);
   const failed = last?.stage === "failed";
   const done = last?.stage === "done";
+  const quietMs = last && now > 0 ? now - new Date(last.at).getTime() : 0;
+  const quiet = !failed && !done && quietMs > QUIET_AFTER_MS;
+  const stopped: Stopped = failed ? "failed" : quiet ? "quiet" : null;
+  const halted = stopped !== null; // either way, "Try again" is the way on
   // Where it is, or where it stopped: the last event that names a stage.
   const stage: StageKey = (() => {
     for (let i = events.length - 1; i >= 0; i--) {
@@ -158,15 +171,15 @@ export function Progress({ projectId, question, title, style, initial, initialLi
 
   // Retries, read off the progress messages: a second "drawing scene 7" before "drew scene 7" is a retry.
   const retries = useMemo(() => retriesFrom(events), [events]);
-  const sceneRows = useMemo(() => view.scenes.map((s, i) => sceneRow(s, i + 1, retries.get(i + 1), failed, stage, done)), [view.scenes, retries, failed, stage, done]);
+  const sceneRows = useMemo(() => view.scenes.map((s, i) => sceneRow(s, i + 1, retries.get(i + 1), stopped, stage, done)), [view.scenes, retries, stopped, stage, done]);
   const ready = sceneRows.filter((r) => r.ready).length;
   const retrying = sceneRows.filter((r) => r.state === "retry").length;
-  const missing = failed ? sceneRows.filter((r) => !r.ready) : [];
+  const missing = halted ? sceneRows.filter((r) => !r.ready) : [];
 
   // Overall progress: stage spans, refined by finished scene work, and eased while rendering. Never goes backwards.
   const maxPct = useRef(0);
   const pct = useMemo(() => {
-    if (failed) return maxPct.current;
+    if (halted) return maxPct.current;
     const [lo, hi] = SPAN[last?.stage ?? "queued"] ?? [0, 1];
     let within = last?.fraction ?? 0;
     if (stage === "visuals" && view.scenes.length) {
@@ -181,7 +194,7 @@ export function Progress({ projectId, question, title, style, initial, initialLi
     const v = done ? 1 : lo + (hi - lo) * Math.min(1, within);
     maxPct.current = Math.max(maxPct.current, v);
     return maxPct.current;
-  }, [last, stage, view.scenes, now, failed, done]);
+  }, [last, stage, view.scenes, now, halted, done]);
 
   const elapsedMin = (now - startedAt) / 60000;
   const etaMin = pct > 0.12 && elapsedMin > 0.5 ? (elapsedMin * (1 - pct)) / pct : TYPICAL_MIN * (1 - pct);
@@ -196,11 +209,11 @@ export function Progress({ projectId, question, title, style, initial, initialLi
           : `About ${Math.max(1, Math.round(etaMin * 0.8))}–${Math.max(Math.max(1, Math.round(etaMin * 0.8)) + 1, Math.round(etaMin * 1.25))} min left`;
 
   useEffect(() => {
-    document.title = failed ? `Stopped · ${title}` : done ? `Ready · ${title}` : `${Math.min(99, Math.round(pct * 100))}% · ${title}`;
-  }, [pct, failed, done, title]);
+    document.title = halted ? `Stopped · ${title}` : done ? `Ready · ${title}` : `${Math.min(99, Math.round(pct * 100))}% · ${title}`;
+  }, [pct, halted, done, title]);
 
   // Accepted but never picked up: the background worker isn't running or hasn't synced this app.
-  const stuck = !failed && now > 0 && (!last || last.stage === "queued") && now - startedAt > 75_000;
+  const stuck = !halted && now > 0 && (!last || last.stage === "queued") && now - startedAt > 75_000;
 
   // The status line, and whether it is a retry (amber).
   const activity = useMemo((): { text: string; warn: boolean } => {
@@ -214,7 +227,7 @@ export function Progress({ projectId, question, title, style, initial, initialLi
 
   const brief = live.brief;
   const segments = STAGES.map((s, i) => {
-    const status: "done" | "active" | "pending" | "error" = done || i < stageIdx ? "done" : i === stageIdx ? (failed ? "error" : "active") : "pending";
+    const status: "done" | "active" | "pending" | "error" = done || i < stageIdx ? "done" : i === stageIdx ? (halted ? "error" : "active") : "pending";
     const [lo, hi] = SPAN[s.key]!;
     const fill = status === "done" ? 100 : status === "error" ? 55 : status === "active" ? Math.round(100 * Math.min(0.96, Math.max(0.06, (pct - lo) / (hi - lo)))) : 0;
     let note: string = status === "done" ? "" : status === "active" ? s.active : s.pending;
@@ -241,8 +254,8 @@ export function Progress({ projectId, question, title, style, initial, initialLi
     if (status === "error" && s.key !== "visuals") note = "Stopped here";
     return { ...s, status, fill, note };
   });
-  const stepLine = done ? "All 5 steps done" : `Step ${stageIdx + 1} of 5 · ${STAGES[stageIdx]!.label}${failed ? " (stopped)" : ""}`;
-  const showWait = !failed && !done;
+  const stepLine = done ? "All 5 steps done" : `Step ${stageIdx + 1} of 5 · ${STAGES[stageIdx]!.label}${halted ? " (stopped)" : ""}`;
+  const showWait = !halted && !done;
 
   const [pending, start] = useTransition();
   const retry = () =>
@@ -270,7 +283,7 @@ export function Progress({ projectId, question, title, style, initial, initialLi
         </ol>
         <p className="mk-step show-sm">{stepLine}</p>
 
-        {!failed ? (
+        {!halted ? (
           <div className="mk-status" aria-live="polite">
             <span className={activity.warn ? "activity warn" : "activity"}>{activity.text}</span>
             <span className="mk-eta">
@@ -279,12 +292,12 @@ export function Progress({ projectId, question, title, style, initial, initialLi
             </span>
           </div>
         ) : (
-          <div className="mk-stopped" role="alert">
+          <div className={quiet ? "mk-stopped quiet" : "mk-stopped"} role="alert">
             <div className="mk-stopped-body">
               <WarnIcon size={22} />
               <div>
-                <p className="mk-stopped-title">This one stopped at {STAGES[stageIdx]!.label}</p>
-                <p className="mk-stopped-text">{stoppedText(stage, last?.message ?? "", missing.map((m) => m.n), view.scenes.length)}</p>
+                <p className="mk-stopped-title">This one {quiet ? "went quiet" : "stopped"} at {STAGES[stageIdx]!.label}</p>
+                <p className="mk-stopped-text">{quiet ? quietText(stage, quietMs, missing.map((m) => m.n), view.scenes.length) : stoppedText(stage, last?.message ?? "", missing.map((m) => m.n), view.scenes.length)}</p>
               </div>
             </div>
             <div className="mk-stopped-actions">
@@ -323,8 +336,8 @@ export function Progress({ projectId, question, title, style, initial, initialLi
 
       <div className="mk-columns">
         <div className="mk-main">
-          <RoughCut projectId={projectId} live={live} rows={sceneRows} title={title} hookLine={view.hookLine} done={done} failed={failed} stage={stage} math={style === "math"} />
-          <Storyboard rows={sceneRows} props={live.roughCut} stage={stage} failed={failed} />
+          <RoughCut projectId={projectId} live={live} rows={sceneRows} title={title} hookLine={view.hookLine} done={done} failed={halted} stage={stage} math={style === "math"} />
+          <Storyboard rows={sceneRows} props={live.roughCut} stage={stage} stopped={stopped} />
         </div>
 
         <aside className="mk-side">
@@ -402,14 +415,17 @@ type Row = {
 };
 
 /** One storyboard row: what is done, what is being made, and how to colour it. */
-function sceneRow(s: LiveScene, n: number, retry: Retry | undefined, failed: boolean, stage: StageKey, done: boolean): Row {
+function sceneRow(s: LiveScene, n: number, retry: Retry | undefined, stopped: Stopped, stage: StageKey, done: boolean): Row {
   const inEdit = PROGRAMMATIC.has(s.visualType) && !s.clipUrl;
   if (s.done || done) {
     const label = inEdit ? "In the edit" : "Picture";
     return { n, scene: s, ready: true, inEdit, state: "done", picture: label, voice: "done", short: "Ready", strip: inEdit ? "edit" : "cut" };
   }
   const voice: Row["voice"] = s.audioUrl ? "done" : stage === "visuals" || stage === "assemble" ? "busy" : "wait";
-  if (failed) return { n, scene: s, ready: false, inEdit, state: "fail", picture: "Didn't draw", voice, short: "Didn't draw", strip: "fail" };
+  if (stopped) {
+    const label = stopped === "failed" ? "Didn't draw" : "Not finished";
+    return { n, scene: s, ready: false, inEdit, state: "fail", picture: label, voice, short: label, strip: "fail" };
+  }
   if (stage !== "visuals" && stage !== "assemble") return { n, scene: s, ready: false, inEdit, state: "wait", picture: "Picture", voice, short: "Recording voice", strip: "idle" };
   const rl = retryLabel(retry);
   if (rl) return { n, scene: s, ready: false, inEdit, state: "retry", picture: rl, voice, short: "Retrying", strip: "retry" };
@@ -460,6 +476,21 @@ function stoppedText(stage: StageKey, message: string, missing: number[], total:
   if (stage === "script") return `The script didn't finish${why}. The research is saved, so trying again starts from there.`;
   if (stage === "research") return `The research didn't finish${why}. Trying again picks it up from the question.`;
   return `It stopped before anything was made${why}. Trying again starts from the question.`;
+}
+
+/** The run went quiet: what that usually means, what is saved, and what "Try again" redoes. */
+function quietText(stage: StageKey, quietMs: number, missing: number[], total: number): string {
+  return `Nothing has happened for ${ago(quietMs)}, which usually means the app was restarted under it or the laptop went to sleep. ${stoppedText(stage, "", missing, total)}`;
+}
+
+/** "20 minutes", "an hour", "3 hours", "a day" */
+function ago(ms: number): string {
+  const min = Math.round(ms / 60_000);
+  if (min < 60) return `${min} minutes`;
+  const h = Math.round(min / 60);
+  if (h < 24) return h === 1 ? "an hour" : `${h} hours`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "a day" : `${d} days`;
 }
 
 // ---------------------------------------------------------------------------
@@ -569,7 +600,7 @@ function RoughCut({ projectId, live, rows, title, hookLine, done, failed, stage,
   );
 }
 
-function Storyboard({ rows, props, stage, failed }: { rows: Row[]; props: LiveState["roughCut"]; stage: StageKey; failed: boolean }) {
+function Storyboard({ rows, props, stage, stopped }: { rows: Row[]; props: LiveState["roughCut"]; stage: StageKey; stopped: Stopped }) {
   const [playing, setPlaying] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const toggle = (s: LiveScene) => {
@@ -592,8 +623,8 @@ function Storyboard({ rows, props, stage, failed }: { rows: Row[]; props: LiveSt
   const failedN = rows.filter((r) => r.state === "fail").length;
   const note = !rows.length
     ? ""
-    : failed
-      ? [`${ready} ready`, edit ? `${edit} for the edit` : "", failedN ? `${failedN} didn't draw` : ""].filter(Boolean).join(" · ")
+    : stopped
+      ? [`${ready} ready`, edit ? `${edit} for the edit` : "", failedN ? `${failedN} ${stopped === "failed" ? "didn't draw" : "not finished"}` : ""].filter(Boolean).join(" · ")
       : stage === "script"
         ? "Script ready · recording the voice"
         : `${ready + edit} of ${rows.length} scenes ready${retrying ? ` · ${retrying} retrying` : ""}${edit && stage === "assemble" ? ` · ${edit} built in the edit` : ""}`;
