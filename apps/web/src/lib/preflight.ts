@@ -172,9 +172,11 @@ export async function runPreflight(): Promise<Check[]> {
 
     run(WORKER_CHECK, "Start the `inngest` service: docker compose up. If it is up but hasn't found the app: docker compose restart inngest, then `docker compose logs inngest web` if runs still don't start.", worker),
     run(MANIM_CHECK, "Start the `manim` service: docker compose up --build, then `docker compose logs manim` if it keeps failing.", () => sandbox("MANIM_URL", "the 3Blue1Brown style is off (Illustrated videos don't need it)")),
-    run(THREE_CHECK, "Start the `three` service: docker compose up --build, then `docker compose logs three` if it keeps failing.", () =>
-      sandbox("THREE_URL", modelWritesAnimation() ? "ANIMATION_AUTHOR=model is set, but without this sandbox Illustrated scenes use the templates" : "no 3D scenes in the 3Blue1Brown style; nothing else uses it"),
-    ),
+    run(THREE_CHECK, "Start the `three` service: docker compose up --build, then `docker compose logs three` if it keeps failing.", async () => {
+      const r = await sandbox("THREE_URL", modelWritesAnimation() ? "ANIMATION_AUTHOR=model is set, but without this sandbox Illustrated scenes use the templates" : "no 3D scenes in the 3Blue1Brown style; nothing else uses it");
+      // Say outright whether the model writes Illustrated animation, so a run that never tried is not a mystery.
+      return typeof r === "string" ? `${r}; ${modelWritesAnimation() ? "the model writes Illustrated motion scenes (ANIMATION_AUTHOR=model)" : "Illustrated motion scenes are templates (ANIMATION_AUTHOR is blank; it is read when the stack starts)"}` : r;
+    }),
   ]);
 }
 
