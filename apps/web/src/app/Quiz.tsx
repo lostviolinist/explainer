@@ -5,41 +5,7 @@ import { explainBack } from "./actions";
 
 export type QuizItem = { statement: string; answer: "myth" | "fact"; explanation: string };
 
-/** Myth or fact, built from the research: the misconceptions it found and its best-corroborated claims. */
-export function MythQuiz({ items }: { items: QuizItem[] }) {
-  const [i, setI] = useState(0);
-  const [picked, setPicked] = useState<"myth" | "fact" | null>(null);
-  const [score, setScore] = useState({ right: 0, seen: 0 });
-  const q = items[i % items.length]!;
-  const pick = (a: "myth" | "fact") => {
-    if (picked) return;
-    setPicked(a);
-    setScore((s) => ({ right: s.right + (a === q.answer ? 1 : 0), seen: s.seen + 1 }));
-  };
-  return (
-    <section className="card quiz">
-      <div className="eyebrow">
-        Myth or fact? {score.seen > 0 && <span className="count">{score.right}/{score.seen}</span>}
-      </div>
-      <p className="statement">“{q.statement}”</p>
-      {!picked ? (
-        <div className="quiz-actions">
-          <button type="button" className="btn ghost" onClick={() => pick("myth")}>Myth</button>
-          <button type="button" className="btn ghost" onClick={() => pick("fact")}>Fact</button>
-        </div>
-      ) : (
-        <div className={`verdict appear ${picked === q.answer ? "right" : "wrong"}`}>
-          <strong>{picked === q.answer ? "Correct — " : "Not quite — "}it's a {q.answer}.</strong> {q.explanation}
-          {items.length > 1 && (
-            <button type="button" className="btn ghost small-btn" onClick={() => { setPicked(null); setI((x) => x + 1); }}>Next</button>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/** Myth or fact, the Unfold way: a statement, two buttons, then one verdict line with the explanation. */
+/** Myth or fact, as the Being-made page shows it: a statement, two buttons, then one verdict line with the explanation. */
 export function MythOrFact({ items }: { items: QuizItem[] }) {
   const [i, setI] = useState(0);
   const [picked, setPicked] = useState<"myth" | "fact" | null>(null);
@@ -69,17 +35,66 @@ export function MythOrFact({ items }: { items: QuizItem[] }) {
 
 type Graded = Awaited<ReturnType<typeof explainBack>>;
 
+const VerdictIcon = ({ className }: { className: string }) => (
+  <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8 12.5l2.5 2.5L16 9.5" /></svg>
+);
+
 /**
  * Watching isn't learning. After the video: the quiz, then the real test,
  * explaining it back in your own words, read by a kind tutor who says what
  * landed and what to watch again.
  */
-export function AfterVideo({ projectId, quiz, goal }: { projectId: string; quiz: QuizItem[]; goal: string }) {
+export function AfterVideo({ projectId, quiz, question }: { projectId: string; quiz: QuizItem[]; question: string }) {
+  return (
+    <section className="wt-land" aria-labelledby="land-h">
+      <div className="wt-land-head">
+        <h2 id="land-h">Did it land?</h2>
+        <p>Watching isn't learning. Two minutes of this is.</p>
+      </div>
+      <div className="wt-cards">
+        {quiz.length > 0 && <MythCard items={quiz} n={1} />}
+        <ExplainCard projectId={projectId} question={question} n={quiz.length ? 2 : 1} />
+      </div>
+    </section>
+  );
+}
+
+function MythCard({ items, n }: { items: QuizItem[]; n: number }) {
+  const [i, setI] = useState(0);
+  const [picked, setPicked] = useState<"myth" | "fact" | null>(null);
+  const q = items[i % items.length]!;
+  const right = picked === q.answer;
+  return (
+    <div className="wt-card">
+      <div className="wt-card-label"><span className="mono num">{n}</span>Myth or fact?</div>
+      <div className="wt-myth">
+        <p className="statement">“{q.statement}”</p>
+        <div className="picks">
+          <button type="button" aria-pressed={picked === "myth"} onClick={() => !picked && setPicked("myth")}>Myth</button>
+          <button type="button" aria-pressed={picked === "fact"} onClick={() => !picked && setPicked("fact")}>Fact</button>
+        </div>
+      </div>
+      {picked && (
+        <div className="wt-verdict appear">
+          <VerdictIcon className={right ? "right" : "wrong"} />
+          <p>
+            <strong className={right ? "right" : "wrong"}>{right ? "Right, it's a " : "Not quite: it's a "}{q.answer}.</strong> {q.explanation}
+            {items.length > 1 && <button type="button" className="wt-link" onClick={() => { setPicked(null); setI((x) => x + 1); }}>Next one</button>}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExplainCard({ projectId, question, n }: { projectId: string; question: string; n: number }) {
   const [text, setText] = useState("");
   const [graded, setGraded] = useState<Graded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const ready = text.trim().length >= 15;
   const submit = () => {
+    if (!ready || pending) return;
     setError(null);
     start(async () => {
       try {
@@ -89,41 +104,37 @@ export function AfterVideo({ projectId, quiz, goal }: { projectId: string; quiz:
       }
     });
   };
+  const tone = graded?.verdict === "got it" ? "right" : graded?.verdict === "nearly" ? "wrong" : "off";
   return (
-    <section className="after">
-      <div className="section-head">
-        <h2>Did it land?</h2>
-        <span className="small">Watching isn't learning. Two minutes of this is.</span>
-      </div>
-      <div className="after-grid">
-        {quiz.length > 0 && <MythQuiz items={quiz} />}
-        <section className="card explain">
-          <div className="eyebrow">In your own words</div>
-          <p className="statement">{goal.replace(/^After watching,\s*the viewer can\s*/i, "Can you ")}{goal.endsWith("?") ? "" : "?"} Explain it as if to a friend.</p>
-          {!graded ? (
-            <>
-              <textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={600} rows={4} placeholder="It works because…" disabled={pending} />
-              <div className="quiz-actions">
-                <button type="button" className="btn primary small-btn" onClick={submit} disabled={pending || text.trim().length < 15} aria-busy={pending}>
-                  {pending ? <><span className="spin" aria-hidden="true" /> Reading…</> : "Check my explanation"}
-                </button>
-              </div>
-              {error && <p className="small">{error}</p>}
-            </>
-          ) : (
-            <div className={`verdict appear ${graded.verdict === "got it" ? "right" : graded.verdict === "nearly" ? "nearly" : "wrong"}`}>
-              <strong>{graded.verdict === "got it" ? "You've got it. " : graded.verdict === "nearly" ? "Nearly. " : "Not yet. "}</strong>
-              {graded.feedback}
-              {graded.missing.length > 0 && (
-                <ul className="missing">
-                  {graded.missing.map((m) => <li key={m}>{m}</li>)}
-                </ul>
-              )}
-              <button type="button" className="btn ghost small-btn" onClick={() => setGraded(null)}>Try again</button>
-            </div>
-          )}
-        </section>
-      </div>
-    </section>
+    <div className="wt-card">
+      <div className="wt-card-label"><span className="mono num">{n}</span>In your own words</div>
+      <label htmlFor="expl" className="wt-prompt">{question} Explain it as if to a friend.</label>
+      {!graded ? (
+        <>
+          <textarea id="expl" value={text} onChange={(e) => setText(e.target.value)} maxLength={600} rows={4} placeholder="It works because…" disabled={pending} />
+          <div className="wt-check">
+            <span className="hint">{error ?? (ready ? "Ready when you are." : "Write a sentence or two, then check it.")}</span>
+            <button type="button" className="wt-check-btn" onClick={submit} disabled={!ready || pending} aria-busy={pending}>
+              {pending ? <><span className="spin" aria-hidden="true" /> Reading…</> : "Check my explanation"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className={`wt-verdict appear ${tone}`}>
+          <VerdictIcon className={tone} />
+          <div>
+            <p>
+              <strong className={tone}>{graded.verdict === "got it" ? "You've got it." : graded.verdict === "nearly" ? "Nearly." : "Not yet."}</strong> {graded.feedback}
+            </p>
+            {graded.missing.length > 0 && (
+              <ul className="missing">
+                {graded.missing.map((m) => <li key={m}>{m}</li>)}
+              </ul>
+            )}
+            <button type="button" className="wt-link" onClick={() => setGraded(null)}>Try again</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

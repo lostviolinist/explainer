@@ -108,6 +108,10 @@ By the time the video is ready, a curious viewer has already learned most of it.
 
 When a scene is drawn again after a failed attempt, the status line says so in amber and the scene's row reads "Retrying". If the run stops for good, the page says which stage it stopped at and what was kept, and **Try those scenes again** picks it up from there: the research, script, voice and the scenes that were made stay; only what is missing is made, then the cut. **Start over** asks the question afresh.
 
+### After the video
+
+The Watch page is the video with its own control bar (a tick on the progress bar at every scene), the title, one line of facts about it (style, length, sources, what it cost), and the actions: **Simpler** and **Deeper** under "Make another version", since each starts a new paid video, then **Share** and **Captions (.srt)**. A follow-up box asks "Wait, why does…?". Below, **Did it land?**: myth or fact, then explaining it back in your own words to a tutor who says what landed. The sidebar holds the transcript, each paragraph with the time it starts (click one to jump there; the one playing is highlighted), and the numbered sources. The share link shows the same page with "Ask your own question" in place of the paid actions.
+
 ### What it costs
 
 Per video: a few cents of search and writing, a dollar or two of narration and pictures in the illustrated style (clips are the expensive part), much less in the 3Blue1Brown style. One-time: about $2.40 per tone for its music bed and a few cents for the sound kit, kept and reused forever. Every paid request carries a key derived from its content, so a retry never pays twice. The three-minute cap is the main lever on cost.

@@ -1,20 +1,23 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
-import type { Brief, RenderResult, ScenePlan, ResearchBrief } from "@explainer/schemas";
 import { db, schema } from "@/lib/db";
-import { latest } from "@/lib/store";
 import { getLiveState } from "@/lib/live";
 import { toPublic } from "@/lib/public-urls";
-import { videoCost } from "@/lib/gallery";
-import { AfterVideo } from "@/app/Quiz";
+import { watchData } from "@/lib/watch";
 import { cleanTitle } from "@/lib/titles";
-import { react } from "@/app/actions";
-import { PendingButton, PendingNote } from "@/app/pending";
 import { Header } from "@/app/Header";
+import { Watch } from "@/app/Watch";
 import { Progress } from "./Progress";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const [project] = await db.select({ question: schema.projects.question, title: schema.projects.title }).from(schema.projects).where(eq(schema.projects.id, id)).limit(1);
+  return { title: project ? cleanTitle(project.question, project.title) : "Not found" };
+}
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,10 +25,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   if (!project) notFound();
 
   const events = await db.select().from(schema.progressEvents).where(eq(schema.progressEvents.projectId, id)).orderBy(asc(schema.progressEvents.at));
-  const render = project.stage === "done" ? await latest<RenderResult>(id, "render") : null;
-
   const title = cleanTitle(project.question, project.title);
-  if (!render) {
+  if (project.stage !== "done") {
     return (
       <>
         <Header wide />
@@ -48,60 +49,18 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  const [plan, research, live, brief, cost] = await Promise.all([latest<ScenePlan>(id, "plan"), latest<ResearchBrief>(id, "research"), getLiveState(id), latest<Brief>(id, "brief"), videoCost(id)]);
-  const poster = toPublic(live.scenes.find((s) => s.stillUrl)?.stillUrl);
-  const videoUrl = toPublic(render.videoUrl);
-  const srtUrl = toPublic(render.srtUrl);
-
+  const data = await watchData(project);
+  if (!data) notFound();
   return (
-    <main>
-      <p className="back"><Link href="/">← Ask something else</Link></p>
-      <h1 className="question">{title}</h1>
-      {/* Captions are burned into the video; the .srt is offered as a download. */}
-      <video className="player" src={videoUrl} poster={poster} controls playsInline preload="metadata" />
-
-      <form action={react} className="reactions">
-        <input type="hidden" name="projectId" value={id} />
-        <PendingButton className="btn ghost" name="reaction" value="simpler">Simpler</PendingButton>
-        <PendingButton className="btn ghost" name="reaction" value="deeper">Deeper</PendingButton>
-        <a className="btn ghost" href={`/s/${project.shareSlug}`}>Share</a>
-        <a className="btn ghost" href={srtUrl} download>Captions (.srt)</a>
-        <PendingNote>Setting up a new video — the progress page opens in a moment.</PendingNote>
-      </form>
-      {cost > 0 && (
-        <p className="small cost">This video cost ${cost.toFixed(2)} to make: search, writing, voice{project.style === "math" ? " and the checks" : ", pictures and the checks"}.</p>
-      )}
-      {live.scenes.some((s) => s.captionsExact === false) && (
-        <p className="small cost">
-          Caption timing in {live.scenes.filter((s) => s.captionsExact === false).length} of {live.scenes.length} scenes was estimated from the words, not heard: the transcription failed
-          {" "}({live.scenes.find((s) => s.captionsExact === false)?.timingNote ?? "no transcription"}). Whoever runs this site can check the Word timing row at /?setup.
-        </p>
-      )}
-      <form action={react} className="followup">
-        <input type="hidden" name="projectId" value={id} />
-        <input type="hidden" name="reaction" value="follow-up" />
-        <input name="followUp" placeholder="wait, why does…? (ask a follow-up)" maxLength={300} required />
-        <PendingButton className="btn">Ask</PendingButton>
-      </form>
-
-      {brief && <AfterVideo projectId={id} quiz={live.quiz} goal={brief.learningGoal} />}
-
-      {research && (
-        <section className="sources">
-          <h2>Sources</h2>
-          <ul>
-            {research.sources.map((s) => (
-              <li key={s.url}><a href={s.url} target="_blank" rel="noreferrer">{s.title}</a> <span className="small">· {s.domain}</span></li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {plan && (
-        <details className="transcript">
-          <summary>Transcript</summary>
-          {plan.scenes.map((s) => s.narration).join("\n\n")}
-        </details>
-      )}
-    </main>
+    <>
+      <Header wide />
+      <main className="wt-page">
+        <Link href="/" className="mk-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+          New question
+        </Link>
+        <Watch data={data} />
+      </main>
+    </>
   );
 }

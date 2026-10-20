@@ -1,41 +1,41 @@
+import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
-import type { Brief, RenderResult, ScenePlan, ResearchBrief } from "@explainer/schemas";
 import { db, schema } from "@/lib/db";
-import { latest } from "@/lib/store";
-import { toPublic } from "@/lib/public-urls";
-import { getLiveState } from "@/lib/live";
-import { AfterVideo } from "@/app/Quiz";
+import { watchData } from "@/lib/watch";
+import { cleanTitle } from "@/lib/titles";
+import { Header, Footer } from "@/app/Header";
+import { Watch } from "@/app/Watch";
 
 export const dynamic = "force-dynamic";
 
-/** Public share page: the video, transcript and sources at one link. */
-export default async function SharePage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+async function find(slug: string) {
   const [project] = await db.select().from(schema.projects).where(eq(schema.projects.shareSlug, slug)).limit(1);
-  if (!project || project.stage !== "done") notFound();
-  const [render, plan, research, brief, live] = await Promise.all([
-    latest<RenderResult>(project.id, "render"),
-    latest<ScenePlan>(project.id, "plan"),
-    latest<ResearchBrief>(project.id, "research"),
-    latest<Brief>(project.id, "brief"),
-    getLiveState(project.id),
-  ]);
-  if (!render) notFound();
+  return project && project.stage === "done" ? project : null;
+}
 
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const project = await find((await params).slug);
+  return { title: project ? cleanTitle(project.question, project.title) : "Not found" };
+}
+
+/** Public share page: the same video, transcript, sources and quiz at one link, with a way to ask your own question. */
+export default async function SharePage({ params }: { params: Promise<{ slug: string }> }) {
+  const project = await find((await params).slug);
+  const data = project && (await watchData(project));
+  if (!data) notFound();
   return (
-    <main>
-      <h1 className="question">{project.question}</h1>
-      <video className="player" src={toPublic(render.videoUrl)} controls playsInline preload="metadata" />
-      {brief && <AfterVideo projectId={project.id} quiz={live.quiz} goal={brief.learningGoal} />}
-      {research && (
-        <section className="sources">
-          <h2>Sources</h2>
-          <ul>{research.sources.map((s) => <li key={s.url}><a href={s.url} target="_blank" rel="noreferrer">{s.title}</a> <span className="small">· {s.domain}</span></li>)}</ul>
-        </section>
-      )}
-      {plan && <details className="transcript"><summary>Transcript</summary>{plan.scenes.map((s) => s.narration).join("\n\n")}</details>}
-      <p className="small" style={{ marginTop: 32 }}><a href="/">Ask your own question →</a></p>
-    </main>
+    <>
+      <Header wide nav={<Link href="/">Ask a question</Link>} />
+      <main className="wt-page">
+        <Link href="/" className="mk-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+          Unfold
+        </Link>
+        <Watch data={data} shared />
+      </main>
+      <Footer />
+    </>
   );
 }
