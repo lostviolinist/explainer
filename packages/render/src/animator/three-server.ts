@@ -167,7 +167,9 @@ export async function renderThree(
     const out = join(dir, "out.mp4");
     try {
       const composition = await selectComposition({ serveUrl, id: "ThreeScene", inputProps: {}, browserExecutable, chromiumOptions });
-      await renderMedia({ composition, serveUrl, codec: "h264", outputLocation: out, browserExecutable, chromiumOptions, cancelSignal, concurrency: 2, logLevel: "error" });
+      // The same pixel format and range as the final video (broadcast-range yuv420p): a full-range clip plays in the
+      // final render, which decodes it with ffmpeg, but Safari's <video> shows it as a still in the rough cut.
+      await renderMedia({ composition, serveUrl, codec: "h264", outputLocation: out, browserExecutable, chromiumOptions, cancelSignal, concurrency: 2, logLevel: "error", pixelFormat: "yuv420p", colorSpace: "bt709", x264Preset: "veryfast", crf: 20 });
     } catch (e) {
       if (/cancel/i.test(errorText(e))) return { status: 504, error: `Rendering took longer than ${TIMEOUT_MS / 1000}s; simplify the scene (fewer things on screen, cheaper effects).` };
       return { status: 422, error: `The scene failed while rendering: ${errorText(e)}` };

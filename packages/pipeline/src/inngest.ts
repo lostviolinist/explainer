@@ -37,7 +37,10 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
     {
       id: "make-video",
       retries: 2,
-      concurrency: { limit: 20 },
+      // One run per project, ever: a second "project/created" for the same project (a re-sent event, a
+      // double submit) would write a second script and second recordings over the first, scene by scene.
+      idempotency: "event.data.projectId",
+      concurrency: [{ limit: 20 }, { key: "event.data.projectId", limit: 1 }],
       onFailure: async ({ event, error, step }) => {
         const { projectId } = event.data.event.data;
         await step.sendEvent("notify-failure", { name: "project/stage.failed", data: { projectId, stage: "unknown", error: error.message } });
