@@ -223,7 +223,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       const dir = await slot();
       try {
         const r = await renderThree(code, duration, background, engine, image, dir);
-        if (r.status !== 200) return json(res, r.status, { error: r.error });
+        if (r.status !== 200) {
+          console.warn(`[three] ${engine} ${r.status}: ${(r.error ?? "").split("\n")[0]!.slice(0, 240)}`);
+          return json(res, r.status, { error: r.error });
+        }
         res.writeHead(200, { "content-type": "video/mp4", "content-length": r.video!.length }).end(r.video);
       } catch (e) {
         json(res, 500, { error: errorText(e) });

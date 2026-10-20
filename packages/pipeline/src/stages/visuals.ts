@@ -438,6 +438,7 @@ async function locateCallouts(ctx: Ctx, scene: Scene, still: MirroredAsset, qa: 
  */
 async function modelAnimation(ctx: Ctx, brief: Brief, scene: Scene, audio: SceneAssets["audio"], qa: QaResult[], cast: CastMember[], picture: MirroredAsset | null): Promise<CodeRender | null> {
   if (!(await ctx.animator.available()).includes("motion")) {
+    console.warn(`[animation] scene ${scene.id.slice(1)}: ANIMATION_AUTHOR=model but the sandbox (THREE_URL) is not healthy; template kept`);
     qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: 0, fallback: "template kept", notes: "model-written animation: the animation sandbox is not running" });
     return null;
   }
@@ -513,6 +514,7 @@ async function renderCodeScene(ctx: Ctx, brief: Brief, scene: Scene, audio: Scen
     const code = stripFences(raw);
     const r = await ctx.animator.render(engine, code, durationS, background, opts.image);
     if (!r.ok) {
+      console.warn(`[animation] scene ${n} attempt ${attempt} (${engine}): code failed: ${r.error.split("\n")[0]!.slice(0, 240)}`);
       qa.push({ check: "visual-matches-direction", passed: false, score: null, attempts: attempt, fallback: null, notes: `${engine} code failed: ${r.error.slice(-300)}` });
       feedback = `\n\nYOUR PREVIOUS CODE FAILED. Fix it and return the full code.\n--- code ---\n${code}\n--- error ---\n${r.error.slice(-1500)}`;
       continue;
@@ -527,6 +529,7 @@ async function renderCodeScene(ctx: Ctx, brief: Brief, scene: Scene, audio: Scen
       : { matchesDirection: 0.5, styleMatch: 0.5, clarity: 0.5, hasText: true, notes: "frames could not be sampled" };
     const s = Math.min(score.matchesDirection, score.styleMatch, score.clarity);
     const ok = score.matchesDirection >= PASS - 0.1 && score.styleMatch >= PASS && score.clarity >= CLEAR;
+    console.log(`[animation] scene ${n} attempt ${attempt} (${engine}): ${ok ? "passed" : "rejected"} (direction ${score.matchesDirection.toFixed(2)}, style ${score.styleMatch.toFixed(2)}, clarity ${score.clarity.toFixed(2)}): ${score.notes.slice(0, 200)}`);
     qa.push({ check: "visual-matches-direction", passed: ok, score: s, attempts: attempt, fallback: null, notes: score.notes });
     if (!best || s > best.score) best = { asset: mirrored, score: s, sounds: tidySounds(sounds, durationS) };
     if (ok) break;
