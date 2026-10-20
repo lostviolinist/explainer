@@ -58,9 +58,12 @@ export function buildRenderProps(brief: Brief, plan: ScenePlan, assets: SceneAss
     scenes: plan.scenes.map((s) => {
       const a = byScene.get(s.id);
       if (!a) throw new Error(`no assets for ${s.id}`);
+      // The captions must say what the voice says: the words the recording was made from win over the plan's,
+      // which can differ when the script was written again after the narration was recorded.
+      if (a.audio.narration && a.audio.narration !== s.narration) console.warn(`[assemble] ${s.id}: the plan's narration differs from the recorded one; captions follow the recording`);
       return {
         id: s.id,
-        narration: s.narration,
+        narration: a.audio.narration ?? s.narration,
         visualType: s.visualType,
         // The spec refined after the visuals (callouts placed on the still) wins over the plan's.
         animSpec: a.animSpec ?? s.render?.animSpec ?? { kind: "none" },

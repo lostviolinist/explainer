@@ -336,6 +336,8 @@ export const SceneAssets = z.object({
   audio: z.object({
     asset: MirroredAsset,
     durationS: z.number(),
+    /** The narration this recording was made from. Captions and cues follow it, whatever the plan says later. */
+    narration: z.string().optional(),
     words: z.array(WordTimestamp),
     /** False when the word times were estimated from the text because transcription failed; captions then drift. */
     exact: z.boolean().optional(),

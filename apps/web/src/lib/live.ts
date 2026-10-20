@@ -82,7 +82,7 @@ export async function getLiveState(projectId: string): Promise<LiveState> {
       return {
         id: s.id,
         beat: s.beat,
-        narration: s.narration,
+        narration: a?.audio.narration ?? s.narration,
         visualType: s.visualType,
         stillUrl: a?.visuals.find((v) => v.role === "still" || v.role === "background")?.asset.url,
         clipUrl: a?.visuals.find((v) => v.role === "clip" || v.role === "animation")?.asset.url,
