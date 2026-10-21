@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { isProjectId } from "@/lib/ids";
 import { asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getLiveState } from "@/lib/live";
@@ -15,12 +16,14 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
+  if (!isProjectId(id)) return { title: "Not found" };
   const [project] = await db.select({ question: schema.projects.question, title: schema.projects.title }).from(schema.projects).where(eq(schema.projects.id, id)).limit(1);
   return { title: project ? cleanTitle(project.question, project.title) : "Not found" };
 }
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!isProjectId(id)) notFound();
   const [project] = await db.select().from(schema.projects).where(eq(schema.projects.id, id)).limit(1);
   if (!project) notFound();
 

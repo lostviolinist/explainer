@@ -619,3 +619,30 @@ test("Try again supersedes the run it replaces: project/resume cancels the origi
   assert.deepEqual(cancels(resume).map((c) => c.event), ["project/resume"]);
   assert.match(cancels(resume)[0]!.if!, /async\.data\.projectId == event\.data\.projectId && async\.ts > event\.ts/);
 });
+
+
+test("the final cut is not retried after its process was killed, but is after an ordinary error, and a new run starts clean", async () => {
+  const { finalCut } = await import("../src/inngest.ts");
+  const { NonRetriableError } = await import("inngest");
+  const store = new MemoryStore();
+  const ctx = { store, now: () => new Date().toISOString() } as unknown as Ctx;
+  assert.equal(await finalCut(ctx, PID, "run-a", async () => "cut"), "cut");
+  assert.equal((await store.getRenderAttempt(PID))?.state, "ended");
+  // An error the code caught leaves "ended": the worker's retry goes ahead.
+  await assert.rejects(
+    finalCut(ctx, PID, "run-a", async () => {
+      throw new Error("upload failed");
+    }),
+    /upload failed/,
+  );
+  assert.equal((await store.getRenderAttempt(PID))?.state, "ended");
+  assert.equal(await finalCut(ctx, PID, "run-a", async () => "cut again"), "cut again");
+  // A process killed mid-render leaves "started": the same run's retry stops with the reason…
+  await store.saveRenderAttempt(PID, { runId: "run-b", state: "started", at: "2026-10-21T00:00:00.000Z" });
+  await assert.rejects(
+    finalCut(ctx, PID, "run-b", async () => "never"),
+    (e: unknown) => e instanceof NonRetriableError && /lack of memory/.test(e.message),
+  );
+  // …while "Try again" (a new run) goes ahead.
+  assert.equal(await finalCut(ctx, PID, "run-c", async () => "cut"), "cut");
+});

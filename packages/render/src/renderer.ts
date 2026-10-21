@@ -7,7 +7,8 @@
  * Both write MP4 + SRT through the provided `upload` callback and return URLs.
  */
 import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { cpus, tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
+import { cpus, totalmem, tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
@@ -68,19 +69,54 @@ export async function ensureRenderBrowser(): Promise<string> {
   );
 }
 
+/** Memory this process may use: the cgroup limit when Docker set one, else the machine's (in Docker Desktop, the VM's). */
+export function memoryBudgetBytes(): number {
+  let limit = totalmem();
+  for (const f of ["/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"]) {
+    try {
+      const n = Number(readFileSync(f, "utf8").trim()); // "max" reads as NaN: no limit set
+      if (Number.isFinite(n) && n > 0) limit = Math.min(limit, n);
+    } catch {}
+  }
+  return limit;
+}
+
+/** What the rest of the stack needs while a render runs: the app, the encoder, Postgres, the worker, the sandboxes idling. */
+const OTHERS_BYTES = 2.5 * 1024 ** 3;
+
+/** What one tab painting frames needs, by output scale: about 700 MB at 1080p, 450 MB at 720p. */
+export function perTabBytes(scale: number): number {
+  return (250 + 450 * scale * scale) * 1024 ** 2;
+}
+
 /**
- * Speed settings for the local render. Frames are painted in parallel Chrome tabs
- * (one per core by default; Remotion's own default is half the cores) and encoded
- * with a fast x264 preset: for flat graphics the difference from "medium" is
- * invisible, the time saved is not. Override with RENDER_CONCURRENCY,
- * RENDER_X264_PRESET and RENDER_CRF.
+ * How many Chrome tabs paint frames at once: half the cores (beyond that, tabs add little speed and
+ * much memory), and never more than fit in memory. More tabs than fit end with the kernel killing
+ * the process part-way: the render dies at a random frame and the container restarts.
  */
+export function defaultConcurrency(cores: number, memBytes: number, scale: number): number {
+  const byCores = Math.max(1, Math.floor(cores / 2));
+  const byMemory = Math.floor((memBytes - OTHERS_BYTES) / perTabBytes(scale));
+  return Math.max(1, Math.min(byCores, byMemory));
+}
+
+/** Not even one tab fits beside the rest of the stack: the render may be killed for lack of memory. */
+export function memoryIsTight(memBytes: number, scale: number): boolean {
+  return memBytes < OTHERS_BYTES + perTabBytes(scale);
+}
+
+/**
+ * Speed settings for the local render. Frames are painted in parallel Chrome tabs, as many as
+ * the cores and the memory allow (see defaultConcurrency), and encoded with a fast x264 preset:
+ * for flat graphics the difference from "medium" is invisible, the time saved is not. Override
+ * with RENDER_CONCURRENCY, RENDER_X264_PRESET and RENDER_CRF.
+ */
+const scale = Math.min(1, Math.max(0.25, Number(process.env.RENDER_SCALE) || 1)); // of 1920×1080: frame capture scales with pixels (0.6667 = 720p, about twice as fast)
 export const RENDER_SPEED = {
-  concurrency: Number(process.env.RENDER_CONCURRENCY) || cpus().length,
+  concurrency: Number(process.env.RENDER_CONCURRENCY) || defaultConcurrency(cpus().length, memoryBudgetBytes(), scale),
   x264Preset: (process.env.RENDER_X264_PRESET || "veryfast") as "ultrafast" | "superfast" | "veryfast" | "faster" | "fast" | "medium" | "slow",
   crf: Number(process.env.RENDER_CRF) || 20,
-  // Output size as a fraction of 1920×1080: frame capture is the bottleneck and scales with pixels (0.6667 = 720p, about twice as fast).
-  scale: Math.min(1, Math.max(0.25, Number(process.env.RENDER_SCALE) || 1)),
+  scale,
 };
 
 /** How far a render has got, for logs and the progress page. */
@@ -117,7 +153,9 @@ export class LocalRenderer {
     const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || null;
     const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps: props, browserExecutable });
     const total = composition.durationInFrames;
-    console.log(`[render] ${props.projectId}: ${total} frames at ${Math.round(composition.width * RENDER_SPEED.scale)}×${Math.round(composition.height * RENDER_SPEED.scale)}, ${RENDER_SPEED.concurrency} tabs; bundled in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    const memGb = memoryBudgetBytes() / 1024 ** 3;
+    console.log(`[render] ${props.projectId}: ${total} frames at ${Math.round(composition.width * RENDER_SPEED.scale)}×${Math.round(composition.height * RENDER_SPEED.scale)}, ${RENDER_SPEED.concurrency} tabs (${cpus().length} cores, ${memGb.toFixed(1)} GB); bundled in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    if (memoryIsTight(memoryBudgetBytes(), RENDER_SPEED.scale)) console.warn(`[render] ${memGb.toFixed(1)} GB is not enough to be sure of finishing: give Docker Desktop at least 4 GB (Settings → Resources), or set RENDER_SCALE=0.6667`);
     const dir = await mkdtemp(join(tmpdir(), "explainer-"));
     const out = join(dir, `${props.projectId}.mp4`);
 

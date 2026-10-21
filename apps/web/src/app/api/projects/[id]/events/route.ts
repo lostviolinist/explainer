@@ -4,12 +4,14 @@
  */
 import { and, asc, eq, gt } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { isProjectId } from "@/lib/ids";
 import { toPublic } from "@/lib/public-urls";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!isProjectId(id)) return new Response("not found", { status: 404 });
   const enc = new TextEncoder();
   let since = new Date(0);
   let closed = false;

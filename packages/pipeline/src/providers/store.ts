@@ -5,7 +5,13 @@
  */
 import type { Brief, ResearchBrief, ScenePlan, SceneAssets, RenderResult, ProgressEvent } from "@explainer/schemas";
 
-export type ArtifactKind = "brief" | "research" | "plan" | "sceneAssets" | "render";
+export type ArtifactKind = "brief" | "research" | "plan" | "sceneAssets" | "render" | "renderAttempt";
+
+/**
+ * A note on the final render, written when it starts and again when it ends, so a retry can tell a
+ * render whose process was killed under it (still "started") from one that failed with an error ("ended").
+ */
+export type RenderAttempt = { runId: string; state: "started" | "ended"; at: string };
 
 export interface ArtifactStore {
   saveBrief(b: Brief): Promise<void>;
@@ -19,6 +25,9 @@ export interface ArtifactStore {
   getPlan(projectId: string): Promise<ScenePlan>;
   getSceneAssets(projectId: string): Promise<SceneAssets[]>;
 
+  saveRenderAttempt(projectId: string, a: RenderAttempt): Promise<void>;
+  getRenderAttempt(projectId: string): Promise<RenderAttempt | null>;
+
   progress(e: ProgressEvent): Promise<void>;
   recordCost(projectId: string, stage: string, usd: number, note?: string): Promise<void>;
 }
@@ -29,6 +38,7 @@ export class MemoryStore implements ArtifactStore {
   plans = new Map<string, ScenePlan>();
   assets = new Map<string, SceneAssets[]>();
   renders = new Map<string, RenderResult>();
+  attempts = new Map<string, RenderAttempt>();
   events: ProgressEvent[] = [];
   costs: { projectId: string; stage: string; usd: number; note?: string }[] = [];
 
@@ -46,6 +56,8 @@ export class MemoryStore implements ArtifactStore {
   async getResearch(id: string) { return must(this.research.get(id), "research"); }
   async getPlan(id: string) { return must(this.plans.get(id), "plan"); }
   async getSceneAssets(id: string) { return this.assets.get(id) ?? []; }
+  async saveRenderAttempt(projectId: string, a: RenderAttempt) { this.attempts.set(projectId, a); }
+  async getRenderAttempt(id: string) { return this.attempts.get(id) ?? null; }
   async progress(e: ProgressEvent) { this.events.push(e); }
   async recordCost(projectId: string, stage: string, usd: number, note?: string) { this.costs.push({ projectId, stage, usd, note }); }
 }

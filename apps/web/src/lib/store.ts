@@ -3,7 +3,7 @@
  * the latest. Progress events also update projects.stage for cheap listing.
  */
 import { and, desc, eq, isNull } from "drizzle-orm";
-import type { ArtifactStore } from "@explainer/pipeline";
+import type { ArtifactStore, RenderAttempt } from "@explainer/pipeline";
 import type { Brief, ResearchBrief, ScenePlan, SceneAssets, RenderResult, ProgressEvent } from "@explainer/schemas";
 import { db, schema } from "./db";
 
@@ -54,6 +54,12 @@ export const drizzleStore: ArtifactStore = {
     return rows.filter((r) => (r.sceneId && !seen.has(r.sceneId) ? (seen.add(r.sceneId), true) : false)).map((r) => r.data as SceneAssets);
   },
 
+  async saveRenderAttempt(projectId, a: RenderAttempt) {
+    await save(projectId, "renderAttempt", a);
+  },
+  async getRenderAttempt(projectId) {
+    return latest<RenderAttempt>(projectId, "renderAttempt");
+  },
   async progress(e: ProgressEvent) {
     await db.transaction(async (tx) => {
       await tx.insert(progressEvents).values({ projectId: e.projectId, stage: e.stage, message: e.message, fraction: e.fraction, preview: e.preview ?? null, at: new Date(e.at) });

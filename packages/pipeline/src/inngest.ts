@@ -47,15 +47,26 @@ export function inPlanOrder(plan: ScenePlan, assets: SceneAssets[]): SceneAssets
 export const inngest = new Inngest({ id: "explainer", schemas: new EventSchemas().fromRecord<Events>() });
 
 /**
- * A render that hit its time ceiling is not retried: the retry would take just as long and
- * start from frame one. The run stops with the reason, and "Try again" redoes only the edit.
+ * The final cut, with two reasons not to retry it. A render that hit its time ceiling: the retry
+ * would take as long and start from frame one. And a render whose process was killed under it
+ * (almost always out of memory: the container restarts, and the worker's retry would be killed the
+ * same way, all night). Either way the run stops with what to change, and "Try again" redoes only
+ * the edit. A note in the store tells the two apart: "started" with no "ended" means killed.
  */
-async function finalCut<T>(run: () => Promise<T>): Promise<T> {
+export async function finalCut<T>(ctx: Ctx, projectId: string, runId: string, run: () => Promise<T>): Promise<T> {
+  const prior = await ctx.store.getRenderAttempt(projectId);
+  if (prior?.runId === runId && prior.state === "started") {
+    console.warn(`[render] ${projectId}: the previous attempt of this run started a render and never finished it; not rendering again`);
+    throw new NonRetriableError("the render was killed part-way, almost always for lack of memory: give Docker more memory, or set RENDER_SCALE=0.6667 for 720p");
+  }
+  await ctx.store.saveRenderAttempt(projectId, { runId, state: "started", at: ctx.now() });
   try {
     return await run();
   } catch (e) {
     if ((e as Error).name === "RenderTimeout") throw new NonRetriableError((e as Error).message, { cause: e });
     throw e;
+  } finally {
+    await ctx.store.saveRenderAttempt(projectId, { runId, state: "ended", at: ctx.now() }).catch(() => undefined);
   }
 }
 
@@ -78,7 +89,7 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
       },
     },
     { event: "project/created" },
-    async ({ event, step }) => {
+    async ({ event, step, runId }) => {
       const ctx = getCtx();
       const { projectId, question, history, derivedFrom, style } = event.data;
 
@@ -115,7 +126,7 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
         step.run("review-script", () => reviewScript(ctx, brief, planWithRender, rb)),
       ]);
 
-      return step.run("assemble", () => finalCut(() => assemble(ctx, getRenderer(), brief, planWithRender, assets, rb, { music, sfx }, reviewed)));
+      return step.run("assemble", () => finalCut(ctx, projectId, runId, () => assemble(ctx, getRenderer(), brief, planWithRender, assets, rb, { music, sfx }, reviewed)));
     },
   );
 
@@ -137,7 +148,7 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
       },
     },
     { event: "project/resume" },
-    async ({ event, step }) => {
+    async ({ event, step, runId }) => {
       const ctx = getCtx();
       const { projectId, question, history, derivedFrom, style } = event.data;
       const saved = async <T,>(get: () => Promise<T>): Promise<T | null> => get().catch(() => null);
@@ -190,7 +201,7 @@ export function makeFunctions(getCtx: () => Ctx, getRenderer: () => Renderer) {
       ]);
 
       const assets = inPlanOrder(plan, [...kept, ...made]);
-      return step.run("assemble", () => finalCut(() => assemble(ctx, getRenderer(), brief, plan, assets, rb, { music, sfx }, reviewed)));
+      return step.run("assemble", () => finalCut(ctx, projectId, runId, () => assemble(ctx, getRenderer(), brief, plan, assets, rb, { music, sfx }, reviewed)));
     },
   );
 
