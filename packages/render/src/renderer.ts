@@ -100,6 +100,23 @@ export function defaultConcurrency(cores: number, memBytes: number, scale: numbe
   return Math.max(1, Math.min(byCores, byMemory));
 }
 
+/**
+ * Remotion multiplies the composition's size by the scale and hands the product to the encoder,
+ * which needs whole, even pixels: 0.6667 of 1920 is 1280.064 and the render stops at once with
+ * "width must be an integer, passed to stitchFramesToVideo()". This is the nearest scale whose
+ * width and height both come out whole and even, in the same floating-point arithmetic.
+ */
+export function snapScale(width: number, height: number, scale: number): number {
+  let best = 1;
+  for (let w = 2; w <= width; w += 2) {
+    const s = w / width;
+    const h = height * s;
+    if (!Number.isInteger(width * s) || !Number.isInteger(h) || h % 2 !== 0) continue;
+    if (Math.abs(s - scale) < Math.abs(best - scale)) best = s;
+  }
+  return best;
+}
+
 /** Not even one tab fits beside the rest of the stack: the render may be killed for lack of memory. */
 export function memoryIsTight(memBytes: number, scale: number): boolean {
   return memBytes < OTHERS_BYTES + perTabBytes(scale);
@@ -154,8 +171,9 @@ export class LocalRenderer {
     const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps: props, browserExecutable });
     const total = composition.durationInFrames;
     const memGb = memoryBudgetBytes() / 1024 ** 3;
-    console.log(`[render] ${props.projectId}: ${total} frames at ${Math.round(composition.width * RENDER_SPEED.scale)}×${Math.round(composition.height * RENDER_SPEED.scale)}, ${RENDER_SPEED.concurrency} tabs (${cpus().length} cores, ${memGb.toFixed(1)} GB); bundled in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
-    if (memoryIsTight(memoryBudgetBytes(), RENDER_SPEED.scale)) console.warn(`[render] ${memGb.toFixed(1)} GB is not enough to be sure of finishing: give Docker Desktop at least 4 GB (Settings → Resources), or set RENDER_SCALE=0.6667`);
+    const scale = snapScale(composition.width, composition.height, RENDER_SPEED.scale);
+    console.log(`[render] ${props.projectId}: ${total} frames at ${composition.width * scale}×${composition.height * scale}, ${RENDER_SPEED.concurrency} tabs (${cpus().length} cores, ${memGb.toFixed(1)} GB); bundled in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    if (memoryIsTight(memoryBudgetBytes(), scale)) console.warn(`[render] ${memGb.toFixed(1)} GB is not enough to be sure of finishing: give Docker Desktop at least 4 GB (Settings → Resources), or set RENDER_SCALE=0.6667`);
     const dir = await mkdtemp(join(tmpdir(), "explainer-"));
     const out = join(dir, `${props.projectId}.mp4`);
 
@@ -178,6 +196,7 @@ export class LocalRenderer {
         outputLocation: out,
         inputProps: props,
         ...RENDER_SPEED,
+        scale,
         audioBitrate: "192k",
         browserExecutable,
         cancelSignal,
