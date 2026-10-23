@@ -47,6 +47,14 @@ test("json: a streamed request with a strict schema, effort in output_config, ro
   assert.equal(r.stream, undefined, "messages.stream sets the flag itself; a plain create would be refused by the SDK for long answers");
 });
 
+test("json: a label a few characters over its limit is clipped, not sent back for a retry", async () => {
+  const { client, requests } = fakeClient([{ steps: [{ label: "Sunlight hits the leaf", sub: "around 3.5 billion years ago" }] }]);
+  const llm = new AnthropicLLM("k", "m", "m", client);
+  const schema = z.object({ steps: z.array(z.object({ label: z.string().max(24), sub: z.string().max(24) })) });
+  assert.deepEqual(await llm.json({ system: "s", user: "u", schema }), { steps: [{ label: "Sunlight hits the leaf", sub: "around 3.5 billion" }] });
+  assert.equal(requests.length, 1, "no second call for a mistake the clip repairs");
+});
+
 test("json: an answer that fails the zod check is retried once with the error fed back; a refusal is reported plainly", async () => {
   const { client, requests } = fakeClient([{ n: "two" }, { n: 2 }]);
   const llm = new AnthropicLLM("k", "m", "m", client);

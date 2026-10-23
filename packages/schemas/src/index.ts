@@ -155,7 +155,22 @@ export type IconName = z.infer<typeof IconName>;
 
 /** A word (or two) from the narration: the thing appears when it is spoken. */
 const Cue = z.string().min(1).max(40);
-const Short = (max: number) => z.string().min(1).max(max);
+
+/**
+ * A short piece of on-screen text, at most `max` characters: the width the template draws it at.
+ * The model is told the limit. An answer that runs over is clipped at a word break rather than
+ * refused (see parseClipping in the pipeline's providers), since one long label must not cost
+ * the whole video. Plain limits only: the structured-output helpers refuse zod transforms.
+ */
+export const Short = (max: number) => z.string().min(1).max(max);
+
+/** Cut to `max` characters at the last word break past the halfway point, else hard. */
+export function clipText(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  return (space >= max / 2 ? cut.slice(0, space) : cut).trimEnd();
+}
 
 /** One side of a split: a heading ("Myth"), a short line, and when it appears. */
 export const SplitSide = z.object({ heading: Short(16), text: Short(72), icon: IconName.nullable(), cue: Cue });

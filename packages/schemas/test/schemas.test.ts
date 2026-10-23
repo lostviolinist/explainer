@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Brief, lengthFromClaims, sceneBudget, Scene } from "../src/index.ts";
+import { Brief, lengthFromClaims, sceneBudget, Scene, Short, clipText } from "../src/index.ts";
 
 test("scene budget for 3 minutes at 165 wpm", () => {
   const b = sceneBudget(180);
@@ -36,4 +36,12 @@ test("brief rejects an over-long question", () => {
 test("scene ids follow s<n>", () => {
   assert.equal(Scene.shape.id.safeParse("s3").success, true);
   assert.equal(Scene.shape.id.safeParse("scene3").success, false);
+});
+
+test("clipText cuts at a word break past the halfway point, else hard", () => {
+  assert.equal(clipText("Energy", 24), "Energy");
+  assert.equal(clipText("Energy stored in the mitochondria", 24), "Energy stored in the");
+  assert.equal(clipText("Supercalifragilistic", 8), "Supercal");
+  assert.ok(clipText("a b c d e f g h i j k l m n o p q r s t u v w x y z", 24).length <= 24);
+  assert.equal(Short(24).safeParse("Energy stored in the mitochondria").success, false, "the schema itself keeps its limit");
 });

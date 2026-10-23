@@ -22,7 +22,7 @@
  * All generated assets are mirrored; both the Hedra asset id and our URL are kept.
  */
 import { z } from "zod";
-import { AnimSpec, ChartSpec, MotionSpec, PointsSpec, RenderSpec, SceneAssets, QaResult, SoundCue, VIDEO_TIMING, type Scene, type ScenePlan, type Brief, type MirroredAsset, type CastMember } from "@explainer/schemas";
+import { AnimSpec, ChartSpec, MotionSpec, PointsSpec, RenderSpec, SceneAssets, QaResult, SoundCue, VIDEO_TIMING, type Scene, type ScenePlan, type Brief, type MirroredAsset, type CastMember, Short } from "@explainer/schemas";
 import { generateStill, animateStill, generateClip, generateSpeech, HedraError, type GenOutcome } from "@explainer/hedra";
 import type { Ctx } from "../context.js";
 import { makeProgress } from "../context.js";
@@ -35,7 +35,7 @@ export const MotionPlan = z.object({ animSpec: MotionSpec, hedraPrompt: z.string
 export const ChartPlan = z.object({ animSpec: ChartSpec });
 export const PointsPlan = z.object({ animSpec: PointsSpec });
 export const PicturePlan = z.object({ hedraPrompt: z.string() });
-export const DiagramPlan = z.object({ hedraPrompt: z.string(), callouts: z.array(z.object({ label: z.string().min(1).max(28), cue: z.string().min(1).max(40) })).min(1).max(6) });
+export const DiagramPlan = z.object({ hedraPrompt: z.string(), callouts: z.array(z.object({ label: Short(28), cue: z.string().min(1).max(40) })).min(1).max(6) });
 
 export const VisionScore = z.object({
   matchesDirection: z.number().min(0).max(1),

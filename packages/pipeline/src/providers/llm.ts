@@ -10,6 +10,7 @@
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import type { z } from "zod";
+import { parseClipping } from "./clip.js";
 
 /** How hard the model should think: "low" for checks and small rewrites, the default for writing. */
 export type Effort = "low" | "medium" | "high";
@@ -88,7 +89,9 @@ export class OpenAILLM implements LLM {
     let text = await this.call(model, system, content, schema, maxTokens, effort);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return schema.parse(extractJson(text));
+        const checked = parseClipping(schema, extractJson(text));
+        if (checked.success) return checked.data;
+        throw checked.error;
       } catch (e) {
         if (attempt === 1) throw e;
         const fix = `Your previous output failed validation: ${(e as Error).message}. Return corrected JSON only.`;

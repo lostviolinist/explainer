@@ -15,6 +15,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodTextFormat } from "openai/helpers/zod";
 import type { z } from "zod";
+import { parseClipping } from "./clip.js";
 import type { Effort, LLM } from "./llm.js";
 
 export const CLAUDE_MODEL = "claude-opus-5-5";
@@ -177,7 +178,7 @@ export class AnthropicLLM implements LLM {
     } catch {
       throw new Error(`the answer did not fit the schema: not JSON: ${text.slice(0, 200)}`);
     }
-    const checked = schema.safeParse(parsed);
+    const checked = parseClipping(schema, parsed);
     if (!checked.success) throw new Error(`the answer did not fit the schema: ${checked.error.issues.slice(0, 5).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
     return checked.data;
   }
